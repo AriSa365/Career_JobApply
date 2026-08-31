@@ -1,0 +1,4 @@
+project_id = "heor-career-agent"
+
+[functions.search-jobs]
+verify_jwt = true

@@ -1,0 +1,24 @@
+# Phase 1 acceptance checklist
+
+- [x] React/Vite dashboard
+- [x] Supabase Auth gate
+- [x] Single-user Edge Function authorization
+- [x] Server-side job-provider secret
+- [x] Four HEOR-focused search groups
+- [x] Server-side 30-day maximum
+- [x] Unknown/ambiguous date rejection
+- [x] Summer 2027 filter
+- [x] PhD/graduate signal filter
+- [x] Internship filter
+- [x] HEOR-adjacent relevance filter
+- [x] Obvious closed-job rejection
+- [x] Active application route required
+- [x] Deduplication
+- [x] Transparent deterministic match score
+- [x] Dashboard keyword/category filters
+- [x] Saved-job browser state
+- [x] Search audit counts
+- [x] Optional Supabase persistence
+- [x] GitHub Pages deploy workflow
+- [ ] Live provider smoke test (requires user's SerpApi + Supabase credentials)
+- [ ] Production deployment to user's GitHub/Supabase
