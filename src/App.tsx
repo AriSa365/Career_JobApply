@@ -7,19 +7,24 @@ import {
   Filter,
   Linkedin,
   LogOut,
+  Plus,
   RefreshCw,
   RotateCcw,
   Search,
   SlidersHorizontal,
   Sparkles,
   Wifi,
+  X,
 } from 'lucide-react'
 import ConfigMissing from './components/ConfigMissing'
+import CVPanel from './components/CVPanel'
 import JobCard from './components/JobCard'
 import Login from './components/Login'
 import StatCard from './components/StatCard'
+import { calculateCvMatch } from './lib/cv'
 import { isConfigured, supabase } from './lib/supabase'
 import type {
+  CvProfile,
   DegreeLevel,
   Job,
   JobCategory,
@@ -39,8 +44,8 @@ const COUNTRIES = [
   'France', 'Belgium', 'Denmark', 'Sweden', 'Norway', 'Australia', 'India', 'Singapore',
 ]
 const OPPORTUNITY_TYPES: OpportunityType[] = ['Internship', 'Full-time job', 'Any']
-const YEARS: TargetYear[] = ['Any', '2026', '2027', '2028', '2029']
-const SEASONS: Season[] = ['Any', 'Summer', 'Fall', 'Spring']
+const YEARS: TargetYear[] = ['Any', '2026', '2027', '2028', '2029', '2030', '2031', '2032']
+const SEASONS: Season[] = ['Any', 'Summer', 'Fall', 'Winter', 'Spring']
 const DEGREES: DegreeLevel[] = ['Any', 'PhD / Doctoral', 'Graduate', "Master's", "Bachelor's"]
 const WORK_ARRANGEMENTS: WorkArrangement[] = ['Any', 'Remote', 'Hybrid', 'On-site']
 const SOURCES: SearchSource[] = ['Google Jobs', 'LinkedIn']
@@ -57,6 +62,7 @@ const DEFAULT_PROFILE: SearchProfile = {
   locationQuery: '',
   sources: ['Google Jobs', 'LinkedIn'],
   categories: ALL_CATEGORIES,
+  customKeywords: [],
 }
 
 const EMPTY_META: SearchMeta = {
@@ -71,12 +77,24 @@ function storedSavedIds(): string[] {
 function storedProfile(): SearchProfile {
   try {
     const parsed = JSON.parse(localStorage.getItem('heor-search-profile') || 'null')
-    return parsed ? { ...DEFAULT_PROFILE, ...parsed } : DEFAULT_PROFILE
+    return parsed ? { ...DEFAULT_PROFILE, ...parsed, customKeywords: Array.isArray(parsed.customKeywords) ? parsed.customKeywords : [] } : DEFAULT_PROFILE
   } catch { return DEFAULT_PROFILE }
+}
+
+function storedCv(): CvProfile | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('heor-cv-profile') || 'null')
+    return parsed?.text ? parsed : null
+  } catch { return null }
 }
 
 function yearSeasonLabel(profile: SearchProfile) {
   return [profile.season !== 'Any' ? profile.season : '', profile.targetYear !== 'Any' ? profile.targetYear : ''].filter(Boolean).join(' ') || 'Any year / season'
+}
+
+function keywordMatchesJob(job: Job, keywords: string[]) {
+  const text = `${job.title} ${job.description} ${job.highlights.join(' ')} ${job.sourceQuery}`.toLowerCase()
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()))
 }
 
 export default function App() {
@@ -85,6 +103,8 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [meta, setMeta] = useState<SearchMeta>(EMPTY_META)
   const [profile, setProfile] = useState<SearchProfile>(storedProfile)
+  const [cv, setCv] = useState<CvProfile | null>(storedCv)
+  const [keywordDraft, setKeywordDraft] = useState('')
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [textFilter, setTextFilter] = useState('')
@@ -103,24 +123,35 @@ export default function App() {
 
   useEffect(() => localStorage.setItem('heor-saved-jobs', JSON.stringify(savedIds)), [savedIds])
   useEffect(() => localStorage.setItem('heor-search-profile', JSON.stringify(profile)), [profile])
+  useEffect(() => {
+    if (cv) localStorage.setItem('heor-cv-profile', JSON.stringify(cv))
+    else localStorage.removeItem('heor-cv-profile')
+  }, [cv])
 
   const visibleJobs = useMemo(() => {
     const needle = textFilter.trim().toLowerCase()
     return jobs.filter((job) => {
       if (savedOnly && !savedIds.includes(job.id)) return false
-      if (!profile.categories.includes(job.category)) return false
+      const areaMatch = profile.categories.includes(job.category) || keywordMatchesJob(job, profile.customKeywords)
+      if ((profile.categories.length > 0 || profile.customKeywords.length > 0) && !areaMatch) return false
       if (!needle) return true
       return [job.title, job.company, job.location, job.description, job.category, job.source]
         .join(' ').toLowerCase().includes(needle)
     })
-  }, [jobs, textFilter, savedOnly, savedIds, profile.categories])
+  }, [jobs, textFilter, savedOnly, savedIds, profile.categories, profile.customKeywords])
+
+  const cvMatches = useMemo(() => {
+    if (!cv) return new Map<string, ReturnType<typeof calculateCvMatch>>()
+    return new Map(jobs.map((job) => [job.id, calculateCvMatch(job, cv, profile.customKeywords)]))
+  }, [jobs, cv, profile.customKeywords])
 
   const sevenDayCount = jobs.filter((j) => j.daysOld <= 7).length
-  const flexibleCount = jobs.filter((j) => j.isRemote || j.isHybrid).length
   const directHeor = jobs.filter((j) => j.category === 'HEOR').length
   const linkedinCount = jobs.filter((j) => j.source === 'LinkedIn').length
-  const estimatedCalls = Math.ceil(profile.categories.length / 2) * profile.sources.length
-  const canSearch = profile.categories.length > 0 && profile.sources.length > 0
+  const categoryCalls = Math.ceil(profile.categories.length / 2)
+  const keywordCalls = Math.ceil(profile.customKeywords.length / 4)
+  const estimatedCalls = (categoryCalls + keywordCalls) * profile.sources.length
+  const canSearch = (profile.categories.length > 0 || profile.customKeywords.length > 0) && profile.sources.length > 0
 
   function toggleCategory(category: JobCategory) {
     setProfile((p) => ({
@@ -134,6 +165,20 @@ export default function App() {
       ...p,
       sources: p.sources.includes(source) ? p.sources.filter((x) => x !== source) : [...p.sources, source],
     }))
+  }
+
+  function addCustomKeyword() {
+    const parts = keywordDraft.split(',').map((x) => x.trim()).filter((x) => x.length >= 2)
+    if (!parts.length) return
+    setProfile((p) => ({
+      ...p,
+      customKeywords: Array.from(new Set([...p.customKeywords, ...parts])).slice(0, 24),
+    }))
+    setKeywordDraft('')
+  }
+
+  function removeCustomKeyword(keyword: string) {
+    setProfile((p) => ({ ...p, customKeywords: p.customKeywords.filter((x) => x !== keyword) }))
   }
 
   function resetProfile() {
@@ -176,7 +221,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small"><BriefcaseBusiness size={21} /></div>
-          <div><strong>HEOR Career Agent</strong><span>Phase 1.2</span></div>
+          <div><strong>HEOR Career Agent</strong><span>Phase 1.3</span></div>
         </div>
 
         <div className="profile-card">
@@ -184,7 +229,7 @@ export default function App() {
           <strong>{profile.opportunityType} · {yearSeasonLabel(profile)}</strong>
           <span>{profile.country}{profile.locationQuery ? ` · ${profile.locationQuery}` : ''}</span>
           <span>{profile.degree} · {profile.workArrangement}</span>
-          <span>≤{profile.cutoffDays}-day posting window</span>
+          <span>{profile.customKeywords.length} custom keyword{profile.customKeywords.length === 1 ? '' : 's'} · ≤{profile.cutoffDays} days</span>
         </div>
 
         <nav className="side-nav">
@@ -202,9 +247,9 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">JOB DISCOVERY</p>
+            <p className="eyebrow">JOB DISCOVERY + CV MATCH</p>
             <h1>Flexible HEOR opportunity radar</h1>
-            <p>Build the search you want, then scan Google Jobs and public LinkedIn job pages with a strict recency gate.</p>
+            <p>Search with your own research keywords, scan Google Jobs and public LinkedIn postings, and compare results with your CV.</p>
           </div>
           <button className="primary-btn search-now" onClick={runSearch} disabled={running || !canSearch}>
             <RefreshCw size={17} className={running ? 'spin' : ''} /> {running ? 'Searching…' : 'Run search now'}
@@ -212,15 +257,15 @@ export default function App() {
         </header>
 
         <section className="stats-grid">
-          <StatCard label="Eligible matches" value={jobs.length} subtext="Passed Phase 1 discovery gates" Icon={BriefcaseBusiness} />
+          <StatCard label="Eligible matches" value={jobs.length} subtext="Passed discovery gates" Icon={BriefcaseBusiness} />
           <StatCard label="Fresh this week" value={sevenDayCount} subtext="Posted ≤7 days ago" Icon={CalendarClock} />
           <StatCard label="Direct HEOR" value={directHeor} subtext="Core HEOR keyword match" Icon={CheckCircle2} />
-          <StatCard label="LinkedIn found" value={linkedinCount} subtext={`${flexibleCount} remote / hybrid results`} Icon={Linkedin} />
+          <StatCard label="LinkedIn found" value={linkedinCount} subtext={cv ? 'CV scoring enabled' : 'Upload CV for match %'} Icon={Linkedin} />
         </section>
 
         <section className="control-panel">
           <div className="control-title-row">
-            <div className="control-title"><SlidersHorizontal size={18} /><div><strong>Search builder</strong><span>Change the parameters before each run. Choices are saved in this browser.</span></div></div>
+            <div className="control-title"><SlidersHorizontal size={18} /><div><strong>Search builder</strong><span>Change parameters before each run. Choices are saved in this browser.</span></div></div>
             <button className="reset-btn" onClick={resetProfile}><RotateCcw size={14} /> Reset</button>
           </div>
 
@@ -236,7 +281,7 @@ export default function App() {
           </div>
 
           <div className="filter-section">
-            <div className="filter-section-copy"><strong>Research areas</strong><span>Select one or more.</span></div>
+            <div className="filter-section-copy"><strong>Core research areas</strong><span>Use these presets, your own keywords below, or both.</span></div>
             <div className="category-controls">
               {ALL_CATEGORIES.map((category) => (
                 <label key={category} className={profile.categories.includes(category) ? 'checked' : ''}>
@@ -244,6 +289,24 @@ export default function App() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="filter-section custom-keyword-section">
+            <div className="filter-section-copy"><strong>Custom research keywords</strong><span>Add methods, therapeutic areas, job functions, or exact phrases. Comma-separated entry is supported.</span></div>
+            <div className="keyword-builder">
+              <input
+                value={keywordDraft}
+                onChange={(e) => setKeywordDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomKeyword() } }}
+                placeholder="e.g., pharmacoeconomics, causal inference, oncology, DCE"
+              />
+              <button className="add-keyword-btn" onClick={addCustomKeyword} disabled={!keywordDraft.trim()}><Plus size={14} /> Add</button>
+            </div>
+            {profile.customKeywords.length > 0 && (
+              <div className="custom-keyword-chips">
+                {profile.customKeywords.map((keyword) => <button key={keyword} onClick={() => removeCustomKeyword(keyword)}>{keyword}<X size={12} /></button>)}
+              </div>
+            )}
           </div>
 
           <div className="filter-section source-section">
@@ -256,11 +319,13 @@ export default function App() {
                 </label>
               ))}
             </div>
-            <div className="provider-call-note">Estimated provider calls this run: <strong>{estimatedCalls}</strong>. Fewer selected research areas or sources use fewer searches.</div>
+            <div className="provider-call-note">Estimated provider calls this run: <strong>{estimatedCalls}</strong>. Custom keywords are grouped four per query to control API usage.</div>
           </div>
 
-          {!canSearch && <div className="inline-warning">Select at least one research area and one search source.</div>}
+          {!canSearch && <div className="inline-warning">Select at least one core research area or add a custom keyword, plus at least one search source.</div>}
         </section>
+
+        <CVPanel cv={cv} onChange={setCv} />
 
         {error && <div className="error-box wide">{error}</div>}
         {meta.queryWarnings.length > 0 && <div className="warning-box wide">Some searches were skipped: {meta.queryWarnings.join(' · ')}</div>}
@@ -276,7 +341,7 @@ export default function App() {
             <h2>{meta.searchedAt ? 'No eligible opportunities found in this search' : 'Ready for a flexible search'}</h2>
             <p>{meta.searchedAt
               ? `The providers returned ${meta.rawCount} raw posting${meta.rawCount === 1 ? '' : 's'}, but none passed the selected discovery gates. ${meta.zeroResultQueries} of ${meta.queriesRun} provider queries returned no jobs.`
-              : <>Choose internship or job, year, season, country, work arrangement and sources above. The server still enforces a maximum 30-day posting-age window and rejects unknown dates.</>}
+              : <>Choose your parameters and research keywords above. The server still enforces a maximum 30-day posting-age window and rejects unknown dates.</>}
             </p>
           </section>
         ) : visibleJobs.length === 0 ? (
@@ -284,11 +349,17 @@ export default function App() {
         ) : (
           <section className="jobs-list">
             <div className="results-heading">
-              <div><h2>{visibleJobs.length} current match{visibleJobs.length === 1 ? '' : 'es'}</h2><p>{meta.searchedAt ? `Last search ${new Date(meta.searchedAt).toLocaleString()}` : ''}</p></div>
+              <div><h2>{visibleJobs.length} current match{visibleJobs.length === 1 ? '' : 'es'}</h2><p>{meta.searchedAt ? `Last search ${new Date(meta.searchedAt).toLocaleString()}` : ''}{cv ? ` · CV match enabled using ${cv.fileName}` : ''}</p></div>
               <div className="audit-pill">Raw {meta.rawCount} → filtered {meta.strictCount}</div>
             </div>
             {visibleJobs.map((job) => (
-              <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} onToggleSave={() => setSavedIds((ids) => ids.includes(job.id) ? ids.filter((id) => id !== job.id) : [...ids, job.id])} />
+              <JobCard
+                key={job.id}
+                job={job}
+                saved={savedIds.includes(job.id)}
+                cvMatch={cvMatches.get(job.id)}
+                onToggleSave={() => setSavedIds((ids) => ids.includes(job.id) ? ids.filter((id) => id !== job.id) : [...ids, job.id])}
+              />
             ))}
           </section>
         )}

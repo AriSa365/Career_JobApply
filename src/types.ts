@@ -1,7 +1,7 @@
 export type JobCategory = 'HEOR' | 'RWE / Epidemiology' | 'Market Access' | 'Patient-Centered' | 'Other'
 export type OpportunityType = 'Internship' | 'Full-time job' | 'Any'
-export type TargetYear = 'Any' | '2026' | '2027' | '2028' | '2029'
-export type Season = 'Any' | 'Summer' | 'Fall' | 'Spring'
+export type TargetYear = string
+export type Season = 'Any' | 'Summer' | 'Fall' | 'Winter' | 'Spring'
 export type DegreeLevel = 'Any' | 'PhD / Doctoral' | 'Graduate' | 'Master\'s' | 'Bachelor\'s'
 export type WorkArrangement = 'Any' | 'Remote' | 'Hybrid' | 'On-site'
 export type SearchSource = 'Google Jobs' | 'LinkedIn'
@@ -68,4 +68,20 @@ export interface SearchProfile {
   locationQuery: string
   sources: SearchSource[]
   categories: JobCategory[]
+  customKeywords: string[]
+}
+
+export interface CvProfile {
+  fileName: string
+  text: string
+  uploadedAt: string
+  wordCount: number
+}
+
+export interface CvMatch {
+  score: number
+  confidence: 'Strong' | 'Preliminary'
+  matchedKeywords: string[]
+  missingKeywords: string[]
+  evidenceCount: number
 }

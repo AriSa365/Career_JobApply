@@ -9,8 +9,8 @@ const corsHeaders = {
 type RawJob = Record<string, any>
 type Category = 'HEOR' | 'RWE / Epidemiology' | 'Market Access' | 'Patient-Centered' | 'Other'
 type OpportunityType = 'Internship' | 'Full-time job' | 'Any'
-type TargetYear = 'Any' | '2026' | '2027' | '2028' | '2029'
-type Season = 'Any' | 'Summer' | 'Fall' | 'Spring'
+type TargetYear = string
+type Season = 'Any' | 'Summer' | 'Fall' | 'Winter' | 'Spring'
 type DegreeLevel = 'Any' | 'PhD / Doctoral' | 'Graduate' | "Master's" | "Bachelor's"
 type WorkArrangement = 'Any' | 'Remote' | 'Hybrid' | 'On-site'
 type SearchSource = 'Google Jobs' | 'LinkedIn'
@@ -26,6 +26,7 @@ type SearchProfile = {
   locationQuery: string
   sources: SearchSource[]
   categories: Category[]
+  customKeywords: string[]
 }
 
 const COUNTRY_CONFIG: Record<string, { gl: string; cr: string; label: string }> = {
@@ -186,7 +187,8 @@ function seasonMatches(text: string, season: Season) {
   const lower = text.toLowerCase()
   if (season === 'Summer') return /summer|june|july|august/.test(lower)
   if (season === 'Fall') return /fall|autumn|september|october|november/.test(lower)
-  return /spring|january|february|march|april|may/.test(lower)
+  if (season === 'Winter') return /winter|december|january|february/.test(lower)
+  return /spring|march|april|may/.test(lower)
 }
 
 function workSignals(text: string, detectedRemote = false) {
@@ -205,10 +207,16 @@ function workMatches(signals: ReturnType<typeof workSignals>, arrangement: WorkA
   return signals.onsite
 }
 
-function hasRelevantSignal(text: string) {
+function hasRelevantSignal(text: string, profile: SearchProfile) {
   const lower = text.toLowerCase()
-  return Object.values(KEYWORD_GROUPS).flat().some((term) => lower.includes(term))
+  const selectedCategoryTerms = profile.categories
+    .filter((x): x is Exclude<Category, 'Other'> => x !== 'Other')
+    .flatMap((category) => KEYWORD_GROUPS[category] || [])
+  const categoryHit = selectedCategoryTerms.some((term) => lower.includes(term.toLowerCase()))
+  const customHit = profile.customKeywords.some((term) => lower.includes(term.toLowerCase()))
+  return categoryHit || customHit
 }
+
 
 function isClosed(text: string) {
   return /no longer accepting|applications? closed|position has been filled|job has expired|posting expired/i.test(text)
@@ -228,18 +236,22 @@ function scoreJob(text: string, title: string, category: Category, profile: Sear
   if (profile.season !== 'Any' && seasonMatches(text, profile.season)) score += 4
   if (/systematic literature review|meta-analysis|economic model|cost-effectiveness|budget impact/.test(lower)) score += 6
   if (/\br\b|sas|python|sql|stata/.test(lower)) score += 4
+  const customHits = profile.customKeywords.filter((term) => lower.includes(term.toLowerCase())).length
+  score += Math.min(12, customHits * 3)
   return Math.min(99, score)
 }
 
-function displayHighlights(text: string) {
+function displayHighlights(text: string, profile: SearchProfile) {
   const lower = text.toLowerCase()
-  return DISPLAY_KEYWORDS.filter((term) => lower.includes(term.toLowerCase())).slice(0, 8)
+  const standard = DISPLAY_KEYWORDS.filter((term) => lower.includes(term.toLowerCase()))
+  const custom = profile.customKeywords.filter((term) => lower.includes(term.toLowerCase()))
+  return Array.from(new Set([...custom, ...standard])).slice(0, 8)
 }
+
 
 function safeProfile(input: any): SearchProfile {
   const opportunityTypes: OpportunityType[] = ['Internship', 'Full-time job', 'Any']
-  const years: TargetYear[] = ['Any', '2026', '2027', '2028', '2029']
-  const seasons: Season[] = ['Any', 'Summer', 'Fall', 'Spring']
+  const seasons: Season[] = ['Any', 'Summer', 'Fall', 'Winter', 'Spring']
   const degrees: DegreeLevel[] = ['Any', 'PhD / Doctoral', 'Graduate', "Master's", "Bachelor's"]
   const arrangements: WorkArrangement[] = ['Any', 'Remote', 'Hybrid', 'On-site']
   const sources: SearchSource[] = ['Google Jobs', 'LinkedIn']
@@ -249,18 +261,27 @@ function safeProfile(input: any): SearchProfile {
   const country = COUNTRY_CONFIG[input?.country] ? input.country : 'United States'
   const selectedCategories = Array.isArray(input?.categories) ? input.categories.filter((x: string) => categories.includes(x as any)) : categories
   const selectedSources = Array.isArray(input?.sources) ? input.sources.filter((x: string) => sources.includes(x as any)) : sources
+  const requestedYear = String(input?.targetYear || '2027')
+  const targetYear = requestedYear === 'Any' || /^20\d{2}$/.test(requestedYear) ? requestedYear : '2027'
+  const customKeywords: string[] = Array.isArray(input?.customKeywords)
+    ? Array.from(new Set(input.customKeywords
+        .map((x: unknown) => String(x || '').trim().replace(/[\r\n\t]+/g, ' '))
+        .filter((x: string) => x.length >= 2 && x.length <= 60)))
+        .slice(0, 24)
+    : []
 
   return {
     cutoffDays,
     opportunityType: opportunityTypes.includes(input?.opportunityType) ? input.opportunityType : 'Internship',
-    targetYear: years.includes(input?.targetYear) ? input.targetYear : '2027',
+    targetYear,
     season: seasons.includes(input?.season) ? input.season : 'Summer',
     degree: degrees.includes(input?.degree) ? input.degree : 'PhD / Doctoral',
     workArrangement: arrangements.includes(input?.workArrangement) ? input.workArrangement : 'Any',
     country,
     locationQuery: String(input?.locationQuery || '').trim().slice(0, 120),
     sources: selectedSources.length ? selectedSources : ['Google Jobs'],
-    categories: selectedCategories.length ? selectedCategories : categories,
+    categories: selectedCategories,
+    customKeywords,
   }
 }
 
@@ -273,12 +294,26 @@ function queryModifiers(profile: SearchProfile) {
   return [opportunity, year, season, degree, work].filter(Boolean).join(' ')
 }
 
+function quoteSearchTerm(term: string) {
+  return `"${term.replace(/["\\]/g, ' ').trim()}"`
+}
+
 function buildThemeQueries(profile: SearchProfile) {
   const selected = profile.categories.filter((x): x is Exclude<Category, 'Other'> => x !== 'Other')
-  const chunks: Exclude<Category, 'Other'>[][] = []
-  for (let i = 0; i < selected.length; i += 2) chunks.push(selected.slice(i, i + 2))
   const modifiers = queryModifiers(profile)
-  return chunks.map((chunk) => `${chunk.map((c) => CATEGORY_SEARCH_TERMS[c]).join(' OR ')} ${modifiers}`.trim())
+  const queries: string[] = []
+
+  for (let i = 0; i < selected.length; i += 2) {
+    const chunk = selected.slice(i, i + 2)
+    queries.push(`${chunk.map((c) => CATEGORY_SEARCH_TERMS[c]).join(' OR ')} ${modifiers}`.trim())
+  }
+
+  for (let i = 0; i < profile.customKeywords.length; i += 4) {
+    const chunk = profile.customKeywords.slice(i, i + 4)
+    queries.push(`(${chunk.map(quoteSearchTerm).join(' OR ')}) ${modifiers}`.trim())
+  }
+
+  return Array.from(new Set(queries)).slice(0, 12)
 }
 
 async function searchGoogleJobs(query: string, profile: SearchProfile, apiKey: string) {
@@ -363,6 +398,9 @@ Deno.serve(async (req) => {
     const requestBody = await req.json().catch(() => ({}))
     const profile = safeProfile(requestBody?.profile)
     const themeQueries = buildThemeQueries(profile)
+    if (themeQueries.length === 0) {
+      return Response.json({ error: 'Select a core research area or add at least one custom keyword.' }, { status: 400, headers: corsHeaders })
+    }
 
     const tasks: { source: SearchSource; query: string; run: () => Promise<RawJob[]> }[] = []
     for (const query of themeQueries) {
@@ -424,7 +462,7 @@ Deno.serve(async (req) => {
 
           const detectedRemote = Boolean(raw?.detected_extensions?.work_from_home)
           const signals = workSignals(fullText, detectedRemote)
-          if (!hasRelevantSignal(fullText) || !opportunityMatches(fullText, profile.opportunityType) || !yearMatches(fullText, profile.targetYear)
+          if (!hasRelevantSignal(fullText, profile) || !opportunityMatches(fullText, profile.opportunityType) || !yearMatches(fullText, profile.targetYear)
             || !seasonMatches(fullText, profile.season) || !degreeMatches(fullText, profile.degree) || !workMatches(signals, profile.workArrangement)) {
             meta.excludedIrrelevant += 1
             continue
@@ -456,7 +494,7 @@ Deno.serve(async (req) => {
             opportunityType: detectOpportunity(fullText),
             degreeSignal: degreeSignal(fullText),
             sourceQuery: batch.query,
-            highlights: displayHighlights(fullText),
+            highlights: displayHighlights(fullText, profile),
             needsVerification: false,
           }
           const existing = deduped.get(stableKey)
@@ -472,7 +510,7 @@ Deno.serve(async (req) => {
           if (!raw.link || isClosed(fullText)) { meta.excludedClosed += 1; continue }
 
           const signals = workSignals(fullText)
-          if (!hasRelevantSignal(`${fullText} ${batch.query}`) || !yearMatches(`${fullText} ${batch.query}`, profile.targetYear)
+          if (!hasRelevantSignal(`${fullText} ${batch.query}`, profile) || !yearMatches(`${fullText} ${batch.query}`, profile.targetYear)
             || !seasonMatches(`${fullText} ${batch.query}`, profile.season)) {
             meta.excludedIrrelevant += 1
             continue
@@ -509,7 +547,7 @@ Deno.serve(async (req) => {
             opportunityType: detectOpportunity(fullText),
             degreeSignal: degreeVisible ? degreeSignal(fullText) : 'Not visible in public LinkedIn search snippet — verify posting',
             sourceQuery: batch.query,
-            highlights: displayHighlights(`${fullText} ${batch.query}`),
+            highlights: displayHighlights(`${fullText} ${batch.query}`, profile),
             needsVerification: true,
           }
           const existing = deduped.get(stableKey)

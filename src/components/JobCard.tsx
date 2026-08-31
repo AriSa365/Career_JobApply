@@ -1,5 +1,5 @@
 import { Bookmark, BookmarkCheck, Building2, CalendarDays, ExternalLink, Linkedin, MapPin, ShieldAlert } from 'lucide-react'
-import type { Job } from '../types'
+import type { CvMatch, Job } from '../types'
 
 function ageClass(days: number) {
   if (days <= 3) return 'fresh'
@@ -7,7 +7,17 @@ function ageClass(days: number) {
   return 'standard'
 }
 
-export default function JobCard({ job, saved, onToggleSave }: { job: Job; saved: boolean; onToggleSave: () => void }) {
+export default function JobCard({
+  job,
+  saved,
+  onToggleSave,
+  cvMatch,
+}: {
+  job: Job
+  saved: boolean
+  onToggleSave: () => void
+  cvMatch?: CvMatch
+}) {
   return (
     <article className="job-card">
       <div className="job-card-top">
@@ -24,7 +34,17 @@ export default function JobCard({ job, saved, onToggleSave }: { job: Job; saved:
           <h3>{job.title}</h3>
           <div className="company-row"><Building2 size={15} /> {job.company}</div>
         </div>
-        <div className="score-ring" title="Deterministic keyword relevance score; not an ATS score."><strong>{job.matchScore}</strong><span>match</span></div>
+
+        <div className="score-stack">
+          {cvMatch ? (
+            <div className={`score-ring cv-score ${cvMatch.confidence === 'Preliminary' ? 'preliminary' : ''}`} title="Transparent job–CV alignment score. This is not an employer ATS score.">
+              <strong>{cvMatch.score}%</strong><span>CV match</span>
+            </div>
+          ) : (
+            <div className="score-ring" title="Deterministic discovery relevance score; upload a CV for job–CV matching."><strong>{job.matchScore}</strong><span>discovery</span></div>
+          )}
+          {cvMatch && <small>{cvMatch.confidence}</small>}
+        </div>
       </div>
 
       <div className="job-meta">
@@ -39,18 +59,35 @@ export default function JobCard({ job, saved, onToggleSave }: { job: Job; saved:
         <span>{job.degreeSignal}</span>
       </div>
 
+      {cvMatch && (
+        <div className="cv-match-details">
+          <div>
+            <span className="match-detail-label">Matched from your CV</span>
+            <div className="keyword-row good">
+              {cvMatch.matchedKeywords.length ? cvMatch.matchedKeywords.map((item) => <span key={item}>{item}</span>) : <em>No explicit keyword overlap visible in this search snippet.</em>}
+            </div>
+          </div>
+          {cvMatch.missingKeywords.length > 0 && (
+            <div>
+              <span className="match-detail-label">Potential gaps to review</span>
+              <div className="keyword-row gap">{cvMatch.missingKeywords.map((item) => <span key={item}>{item}</span>)}</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {job.needsVerification && (
         <div className="verification-note">LinkedIn public search snippets can omit degree, work-mode, or employment details. Open the posting before treating this as fully eligible.</div>
       )}
 
-      {job.highlights.length > 0 && (
+      {!cvMatch && job.highlights.length > 0 && (
         <div className="keyword-row">
           {job.highlights.slice(0, 6).map((item) => <span key={item}>{item}</span>)}
         </div>
       )}
 
       <div className="job-footer">
-        <div className="source-copy">Found via {job.via} · recency filter passed</div>
+        <div className="source-copy">Found via {job.via} · recency filter passed{cvMatch ? ` · discovery score ${job.matchScore}` : ''}</div>
         <div className="job-actions">
           <button className="icon-btn" onClick={onToggleSave} title={saved ? 'Remove saved job' : 'Save job'}>
             {saved ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}

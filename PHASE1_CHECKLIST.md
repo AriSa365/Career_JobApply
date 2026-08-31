@@ -18,3 +18,13 @@
 - [ ] Provider-call estimate changes with selected categories/sources.
 - [ ] Search profile persists after browser refresh.
 - [ ] Saved jobs persist after browser refresh.
+
+
+## Phase 1.3 checks
+- [ ] Add/remove custom research keywords and confirm they persist after refresh.
+- [ ] Search with only custom keywords selected.
+- [ ] Upload a DOCX CV and confirm word count appears.
+- [ ] Upload a text-based PDF CV and confirm extraction works.
+- [ ] Confirm each result shows CV match % after a CV is loaded.
+- [ ] Confirm matched and potential-gap keywords appear.
+- [ ] Confirm clearing the CV removes job-specific CV scores.

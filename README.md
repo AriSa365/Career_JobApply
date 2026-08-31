@@ -238,3 +238,23 @@ Phase 2 can add a new `analyze-job` Edge Function using a strong OpenAI model an
 - Keep the function authenticated.
 - Keep `ALLOWED_EMAIL` set for a single-user deployment.
 - Treat the provider's apply URL as a navigation route; the user should make the final application submission.
+
+## Phase 1.3 additions
+
+### Custom research keywords
+The Search Builder now supports user-defined keyword phrases in addition to the built-in HEOR, RWE/Epidemiology, Market Access, and Patient-Centered presets. Up to 24 custom phrases are accepted. The Edge Function groups them four per query to control provider usage.
+
+Examples:
+- pharmacoeconomics
+- causal inference
+- oncology HEOR
+- discrete choice experiment
+- clinical outcomes assessment
+- value-based healthcare
+
+### Local CV matching
+The dashboard includes a CV Match Workspace. DOCX, PDF, and TXT files are parsed in the browser using `mammoth` and `pdfjs-dist`. The raw file is not uploaded to Supabase and is never sent to SerpApi in Phase 1.3.
+
+The extracted text is stored in the browser's localStorage and used to calculate a transparent job–CV alignment score. This is not an employer ATS score. It is intended to help prioritize postings and expose matched/missing terminology before the GPT-based Phase 2 analysis.
+
+If the browser cache/site data is cleared, upload the CV again.
