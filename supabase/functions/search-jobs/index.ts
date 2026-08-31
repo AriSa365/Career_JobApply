@@ -496,7 +496,7 @@ Deno.serve(async (req) => {
             via: 'LinkedIn public job page',
             source: 'LinkedIn' as SearchSource,
             description: snippet.slice(0, 1800),
-            postedAtLabel,
+            postedAtLabel: postedLabel,
             postedAtISO: age.iso,
             daysOld: age.days,
             applyUrl: raw.link,

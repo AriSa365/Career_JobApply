@@ -22,3 +22,9 @@ This release turns the original fixed Summer-2027/U.S./PhD-internship search int
 ## Important LinkedIn behavior
 
 The application does not sign into LinkedIn, store LinkedIn credentials, scrape a logged-in LinkedIn session, send LinkedIn messages, or submit LinkedIn applications. It discovers public LinkedIn job pages through web search and opens the original posting for verification and user action.
+
+## Phase 1.2.1 hotfix
+
+- Fixed LinkedIn result normalization crash: `postedAtLabel is not defined`.
+- LinkedIn candidates now correctly map the parsed provider label with `postedAtLabel: postedLabel`.
+
