@@ -5,6 +5,11 @@ export type Season = 'Any' | 'Summer' | 'Fall' | 'Winter' | 'Spring'
 export type DegreeLevel = 'Any' | 'PhD / Doctoral' | 'Graduate' | 'Master\'s' | 'Bachelor\'s'
 export type WorkArrangement = 'Any' | 'Remote' | 'Hybrid' | 'On-site'
 export type SearchSource = 'Google Jobs' | 'LinkedIn'
+export type Recommendation = 'APPLY' | 'REVIEW' | 'SKIP'
+export type EligibilityStatus = 'PASS' | 'REVIEW' | 'FAIL'
+export type SponsorshipStatus = 'COMPATIBLE' | 'UNKNOWN' | 'INCOMPATIBLE'
+export type DetailCompleteness = 'FULL' | 'PARTIAL' | 'SNIPPET'
+export type AnalysisDepth = 'Standard' | 'Deep'
 
 export interface ApplyOption {
   title: string
@@ -84,4 +89,55 @@ export interface CvMatch {
   matchedKeywords: string[]
   missingKeywords: string[]
   evidenceCount: number
+}
+
+export interface CandidateProfile {
+  expectedGraduation: string
+  currentStatus: string
+  cptEligible: boolean
+  needsFutureSponsorship: boolean
+  openToRelocation: boolean
+  notes: string
+}
+
+export interface GptAnalysis {
+  jobId: string
+  analyzedAt: string
+  model: string
+  reasoningDepth: AnalysisDepth
+  recommendation: Recommendation
+  eligibility: EligibilityStatus
+  eligibilityReason: string
+  sponsorship: SponsorshipStatus
+  sponsorshipReason: string
+  cvMatch: number
+  overallFit: number
+  heorRelevance: 'HIGH' | 'MEDIUM' | 'LOW'
+  jobDescriptionCompleteness: DetailCompleteness
+  summary: string
+  requiredQualifications: string[]
+  preferredQualifications: string[]
+  strengths: string[]
+  gaps: string[]
+  atsKeywords: string[]
+  tailoringActions: string[]
+  cautionFlags: string[]
+  sourceUrls: string[]
+  evidenceNotes: string[]
+  usage?: {
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
+  }
+}
+
+export interface AnalyzeJobRequest {
+  job: Job
+  cv: CvProfile
+  candidate: CandidateProfile
+  depth: AnalysisDepth
+}
+
+export interface AnalyzeJobResponse {
+  analysis: GptAnalysis
 }

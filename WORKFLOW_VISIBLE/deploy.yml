@@ -57,6 +57,7 @@ jobs:
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
       ALLOWED_EMAIL: ${{ secrets.ALLOWED_EMAIL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,7 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SUPABASE_DB_PASSWORD SERPAPI_KEY ALLOWED_EMAIL; do
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SUPABASE_DB_PASSWORD SERPAPI_KEY ALLOWED_EMAIL OPENAI_API_KEY; do
             if [ -z "${!name:-}" ]; then
               echo "Missing required GitHub Actions secret: $name"
               exit 1
@@ -88,6 +89,7 @@ jobs:
           supabase secrets set \
             SERPAPI_KEY="$SERPAPI_KEY" \
             ALLOWED_EMAIL="$ALLOWED_EMAIL" \
+            OPENAI_API_KEY="$OPENAI_API_KEY" \
             --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy Edge Functions

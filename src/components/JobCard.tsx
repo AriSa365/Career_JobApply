@@ -1,5 +1,6 @@
-import { Bookmark, BookmarkCheck, Building2, CalendarDays, ExternalLink, Linkedin, MapPin, ShieldAlert } from 'lucide-react'
-import type { CvMatch, Job } from '../types'
+import { Bookmark, BookmarkCheck, Building2, CalendarDays, ExternalLink, Linkedin, Loader2, MapPin, ShieldAlert, Sparkles } from 'lucide-react'
+import type { CvMatch, GptAnalysis, Job } from '../types'
+import GptAnalysisPanel from './GptAnalysisPanel'
 
 function ageClass(days: number) {
   if (days <= 3) return 'fresh'
@@ -12,11 +13,19 @@ export default function JobCard({
   saved,
   onToggleSave,
   cvMatch,
+  gptAnalysis,
+  analyzing,
+  canAnalyze,
+  onAnalyze,
 }: {
   job: Job
   saved: boolean
   onToggleSave: () => void
   cvMatch?: CvMatch
+  gptAnalysis?: GptAnalysis
+  analyzing?: boolean
+  canAnalyze?: boolean
+  onAnalyze?: () => void
 }) {
   return (
     <article className="job-card">
@@ -30,20 +39,25 @@ export default function JobCard({
             {job.isHybrid && <span className="soft-badge">Hybrid</span>}
             {job.isOnsite && <span className="soft-badge">On-site</span>}
             {job.needsVerification && <span className="verify-badge"><ShieldAlert size={10} /> Verify details</span>}
+            {gptAnalysis && <span className={`gpt-result-badge ${gptAnalysis.recommendation.toLowerCase()}`}><Sparkles size={10} /> {gptAnalysis.recommendation}</span>}
           </div>
           <h3>{job.title}</h3>
           <div className="company-row"><Building2 size={15} /> {job.company}</div>
         </div>
 
         <div className="score-stack">
-          {cvMatch ? (
-            <div className={`score-ring cv-score ${cvMatch.confidence === 'Preliminary' ? 'preliminary' : ''}`} title="Transparent job–CV alignment score. This is not an employer ATS score.">
+          {gptAnalysis ? (
+            <div className={`score-ring cv-score gpt-score ${gptAnalysis.recommendation.toLowerCase()}`} title="GPT semantic CV match after eligibility reasoning.">
+              <strong>{gptAnalysis.cvMatch}%</strong><span>GPT match</span>
+            </div>
+          ) : cvMatch ? (
+            <div className={`score-ring cv-score ${cvMatch.confidence === 'Preliminary' ? 'preliminary' : ''}`} title="Transparent keyword job–CV alignment score. This is not an employer ATS score.">
               <strong>{cvMatch.score}%</strong><span>CV match</span>
             </div>
           ) : (
             <div className="score-ring" title="Deterministic discovery relevance score; upload a CV for job–CV matching."><strong>{job.matchScore}</strong><span>discovery</span></div>
           )}
-          {cvMatch && <small>{cvMatch.confidence}</small>}
+          {!gptAnalysis && cvMatch && <small>{cvMatch.confidence}</small>}
         </div>
       </div>
 
@@ -59,7 +73,7 @@ export default function JobCard({
         <span>{job.degreeSignal}</span>
       </div>
 
-      {cvMatch && (
+      {!gptAnalysis && cvMatch && (
         <div className="cv-match-details">
           <div>
             <span className="match-detail-label">Matched from your CV</span>
@@ -76,11 +90,13 @@ export default function JobCard({
         </div>
       )}
 
-      {job.needsVerification && (
-        <div className="verification-note">LinkedIn public search snippets can omit degree, work-mode, or employment details. Open the posting before treating this as fully eligible.</div>
+      {gptAnalysis && <GptAnalysisPanel analysis={gptAnalysis} />}
+
+      {!gptAnalysis && job.needsVerification && (
+        <div className="verification-note">Public search snippets can omit degree, work-mode, sponsorship, or employment details. Use GPT Analysis to research the fuller posting before treating this as eligible.</div>
       )}
 
-      {!cvMatch && job.highlights.length > 0 && (
+      {!cvMatch && !gptAnalysis && job.highlights.length > 0 && (
         <div className="keyword-row">
           {job.highlights.slice(0, 6).map((item) => <span key={item}>{item}</span>)}
         </div>
@@ -89,6 +105,11 @@ export default function JobCard({
       <div className="job-footer">
         <div className="source-copy">Found via {job.via} · recency filter passed{cvMatch ? ` · discovery score ${job.matchScore}` : ''}</div>
         <div className="job-actions">
+          {onAnalyze && (
+            <button className="analyze-btn" onClick={onAnalyze} disabled={!canAnalyze || analyzing} title={!canAnalyze ? 'Upload a CV before GPT analysis' : 'Analyze the full role against your CV'}>
+              {analyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} {analyzing ? 'Analyzing…' : gptAnalysis ? 'Re-analyze' : 'Analyze with GPT'}
+            </button>
+          )}
           <button className="icon-btn" onClick={onToggleSave} title={saved ? 'Remove saved job' : 'Save job'}>
             {saved ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
           </button>

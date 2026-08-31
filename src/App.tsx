@@ -16,16 +16,22 @@ import {
   Wifi,
   X,
 } from 'lucide-react'
+import AnalysisWorkspace from './components/AnalysisWorkspace'
 import ConfigMissing from './components/ConfigMissing'
 import CVPanel from './components/CVPanel'
 import JobCard from './components/JobCard'
 import Login from './components/Login'
 import StatCard from './components/StatCard'
+import { DEFAULT_CANDIDATE_PROFILE, loadCandidateProfile } from './lib/candidate'
 import { calculateCvMatch } from './lib/cv'
 import { isConfigured, supabase } from './lib/supabase'
 import type {
+  AnalysisDepth,
+  AnalyzeJobResponse,
+  CandidateProfile,
   CvProfile,
   DegreeLevel,
+  GptAnalysis,
   Job,
   JobCategory,
   OpportunityType,
@@ -50,6 +56,8 @@ const DEGREES: DegreeLevel[] = ['Any', 'PhD / Doctoral', 'Graduate', "Master's",
 const WORK_ARRANGEMENTS: WorkArrangement[] = ['Any', 'Remote', 'Hybrid', 'On-site']
 const SOURCES: SearchSource[] = ['Google Jobs', 'LinkedIn']
 const CUTOFFS = [7, 14, 30]
+
+type View = 'discovery' | 'analysis'
 
 const DEFAULT_PROFILE: SearchProfile = {
   cutoffDays: 30,
@@ -88,6 +96,13 @@ function storedCv(): CvProfile | null {
   } catch { return null }
 }
 
+function storedAnalyses(): Map<string, GptAnalysis> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('heor-gpt-analyses') || '{}') as Record<string, GptAnalysis>
+    return new Map(Object.entries(parsed))
+  } catch { return new Map() }
+}
+
 function yearSeasonLabel(profile: SearchProfile) {
   return [profile.season !== 'Any' ? profile.season : '', profile.targetYear !== 'Any' ? profile.targetYear : ''].filter(Boolean).join(' ') || 'Any year / season'
 }
@@ -97,16 +112,32 @@ function keywordMatchesJob(job: Job, keywords: string[]) {
   return keywords.some((keyword) => text.includes(keyword.toLowerCase()))
 }
 
+async function readableFunctionError(err: unknown) {
+  if (err instanceof FunctionsHttpError) {
+    try {
+      const payload = await err.context.json()
+      return payload?.error || err.message
+    } catch { return err.message }
+  }
+  return err instanceof Error ? err.message : 'Unexpected error.'
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [view, setView] = useState<View>('discovery')
   const [jobs, setJobs] = useState<Job[]>([])
   const [meta, setMeta] = useState<SearchMeta>(EMPTY_META)
   const [profile, setProfile] = useState<SearchProfile>(storedProfile)
   const [cv, setCv] = useState<CvProfile | null>(storedCv)
+  const [candidate, setCandidate] = useState<CandidateProfile>(loadCandidateProfile)
+  const [depth, setDepth] = useState<AnalysisDepth>('Deep')
+  const [analyses, setAnalyses] = useState<Map<string, GptAnalysis>>(storedAnalyses)
+  const [analyzingIds, setAnalyzingIds] = useState<string[]>([])
   const [keywordDraft, setKeywordDraft] = useState('')
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
+  const [analysisError, setAnalysisError] = useState('')
   const [textFilter, setTextFilter] = useState('')
   const [savedOnly, setSavedOnly] = useState(false)
   const [savedIds, setSavedIds] = useState<string[]>(storedSavedIds)
@@ -123,6 +154,11 @@ export default function App() {
 
   useEffect(() => localStorage.setItem('heor-saved-jobs', JSON.stringify(savedIds)), [savedIds])
   useEffect(() => localStorage.setItem('heor-search-profile', JSON.stringify(profile)), [profile])
+  useEffect(() => localStorage.setItem('heor-candidate-profile', JSON.stringify(candidate)), [candidate])
+  useEffect(() => {
+    const obj = Object.fromEntries(analyses.entries())
+    localStorage.setItem('heor-gpt-analyses', JSON.stringify(obj))
+  }, [analyses])
   useEffect(() => {
     if (cv) localStorage.setItem('heor-cv-profile', JSON.stringify(cv))
     else localStorage.removeItem('heor-cv-profile')
@@ -154,26 +190,17 @@ export default function App() {
   const canSearch = (profile.categories.length > 0 || profile.customKeywords.length > 0) && profile.sources.length > 0
 
   function toggleCategory(category: JobCategory) {
-    setProfile((p) => ({
-      ...p,
-      categories: p.categories.includes(category) ? p.categories.filter((x) => x !== category) : [...p.categories, category],
-    }))
+    setProfile((p) => ({ ...p, categories: p.categories.includes(category) ? p.categories.filter((x) => x !== category) : [...p.categories, category] }))
   }
 
   function toggleSource(source: SearchSource) {
-    setProfile((p) => ({
-      ...p,
-      sources: p.sources.includes(source) ? p.sources.filter((x) => x !== source) : [...p.sources, source],
-    }))
+    setProfile((p) => ({ ...p, sources: p.sources.includes(source) ? p.sources.filter((x) => x !== source) : [...p.sources, source] }))
   }
 
   function addCustomKeyword() {
     const parts = keywordDraft.split(',').map((x) => x.trim()).filter((x) => x.length >= 2)
     if (!parts.length) return
-    setProfile((p) => ({
-      ...p,
-      customKeywords: Array.from(new Set([...p.customKeywords, ...parts])).slice(0, 24),
-    }))
+    setProfile((p) => ({ ...p, customKeywords: Array.from(new Set([...p.customKeywords, ...parts])).slice(0, 24) }))
     setKeywordDraft('')
   }
 
@@ -188,6 +215,12 @@ export default function App() {
     setError('')
   }
 
+  function handleCvChange(nextCv: CvProfile | null) {
+    const changed = nextCv?.uploadedAt !== cv?.uploadedAt
+    setCv(nextCv)
+    if (changed && analyses.size > 0) setAnalyses(new Map())
+  }
+
   async function runSearch() {
     if (!supabase || !canSearch) return
     setRunning(true)
@@ -199,17 +232,36 @@ export default function App() {
       setJobs(data.jobs)
       setMeta(data.meta)
     } catch (err) {
-      if (err instanceof FunctionsHttpError) {
-        try {
-          const payload = await err.context.json()
-          setError(payload?.error || err.message)
-        } catch { setError(err.message) }
-      } else {
-        setError(err instanceof Error ? err.message : 'The search failed. Check Edge Function logs and secrets.')
-      }
+      setError(await readableFunctionError(err))
     } finally { setRunning(false) }
   }
 
+  async function analyzeJob(job: Job) {
+    if (!supabase || !cv) {
+      setAnalysisError('Upload a CV before running GPT analysis.')
+      return
+    }
+    setAnalyzingIds((ids) => Array.from(new Set([...ids, job.id])))
+    setAnalysisError('')
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke<AnalyzeJobResponse>('analyze-job', {
+        body: { job, cv, candidate, depth },
+      })
+      if (invokeError) throw invokeError
+      if (!data?.analysis) throw new Error('GPT analysis returned no result.')
+      setAnalyses((current) => new Map(current).set(job.id, data.analysis))
+    } catch (err) {
+      setAnalysisError(await readableFunctionError(err))
+    } finally {
+      setAnalyzingIds((ids) => ids.filter((id) => id !== job.id))
+    }
+  }
+
+  function toggleSaved(jobId: string) {
+    setSavedIds((ids) => ids.includes(jobId) ? ids.filter((id) => id !== jobId) : [...ids, jobId])
+  }
+
+  function resetCandidate() { setCandidate(DEFAULT_CANDIDATE_PROFILE) }
   async function signOut() { await supabase?.auth.signOut() }
 
   if (!isConfigured) return <ConfigMissing />
@@ -221,7 +273,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small"><BriefcaseBusiness size={21} /></div>
-          <div><strong>HEOR Career Agent</strong><span>Phase 1.3</span></div>
+          <div><strong>HEOR Career Agent</strong><span>Phase 2</span></div>
         </div>
 
         <div className="profile-card">
@@ -233,8 +285,8 @@ export default function App() {
         </div>
 
         <nav className="side-nav">
-          <button className="active"><Search size={17} /> Job Discovery</button>
-          <button disabled><Sparkles size={17} /> GPT Analysis <em>Phase 2</em></button>
+          <button className={view === 'discovery' ? 'active' : ''} onClick={() => setView('discovery')}><Search size={17} /> Job Discovery</button>
+          <button className={view === 'analysis' ? 'active' : ''} onClick={() => setView('analysis')}><Sparkles size={17} /> GPT Analysis <em>{analyses.size || ''}</em></button>
           <button disabled><CheckCircle2 size={17} /> Applications <em>Later</em></button>
         </nav>
 
@@ -245,137 +297,111 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">JOB DISCOVERY + CV MATCH</p>
-            <h1>Flexible HEOR opportunity radar</h1>
-            <p>Search with your own research keywords, scan Google Jobs and public LinkedIn postings, and compare results with your CV.</p>
-          </div>
-          <button className="primary-btn search-now" onClick={runSearch} disabled={running || !canSearch}>
-            <RefreshCw size={17} className={running ? 'spin' : ''} /> {running ? 'Searching…' : 'Run search now'}
-          </button>
-        </header>
-
-        <section className="stats-grid">
-          <StatCard label="Eligible matches" value={jobs.length} subtext="Passed discovery gates" Icon={BriefcaseBusiness} />
-          <StatCard label="Fresh this week" value={sevenDayCount} subtext="Posted ≤7 days ago" Icon={CalendarClock} />
-          <StatCard label="Direct HEOR" value={directHeor} subtext="Core HEOR keyword match" Icon={CheckCircle2} />
-          <StatCard label="LinkedIn found" value={linkedinCount} subtext={cv ? 'CV scoring enabled' : 'Upload CV for match %'} Icon={Linkedin} />
-        </section>
-
-        <section className="control-panel">
-          <div className="control-title-row">
-            <div className="control-title"><SlidersHorizontal size={18} /><div><strong>Search builder</strong><span>Change parameters before each run. Choices are saved in this browser.</span></div></div>
-            <button className="reset-btn" onClick={resetProfile}><RotateCcw size={14} /> Reset</button>
-          </div>
-
-          <div className="selector-grid">
-            <label><span>Opportunity type</span><select value={profile.opportunityType} onChange={(e) => setProfile((p) => ({ ...p, opportunityType: e.target.value as OpportunityType }))}>{OPPORTUNITY_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label><span>Target year</span><select value={profile.targetYear} onChange={(e) => setProfile((p) => ({ ...p, targetYear: e.target.value as TargetYear }))}>{YEARS.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label><span>Season</span><select value={profile.season} onChange={(e) => setProfile((p) => ({ ...p, season: e.target.value as Season }))}>{SEASONS.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label><span>Degree level</span><select value={profile.degree} onChange={(e) => setProfile((p) => ({ ...p, degree: e.target.value as DegreeLevel }))}>{DEGREES.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label><span>Work arrangement</span><select value={profile.workArrangement} onChange={(e) => setProfile((p) => ({ ...p, workArrangement: e.target.value as WorkArrangement }))}>{WORK_ARRANGEMENTS.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label><span>Country</span><select value={profile.country} onChange={(e) => setProfile((p) => ({ ...p, country: e.target.value }))}>{COUNTRIES.map((x) => <option key={x}>{x}</option>)}</select></label>
-            <label className="location-field"><span>City / state / region <em>optional</em></span><input value={profile.locationQuery} onChange={(e) => setProfile((p) => ({ ...p, locationQuery: e.target.value }))} placeholder="e.g., Boston, MA or London" /></label>
-            <label><span>Posted within</span><select value={profile.cutoffDays} onChange={(e) => setProfile((p) => ({ ...p, cutoffDays: Number(e.target.value) }))}>{CUTOFFS.map((x) => <option key={x} value={x}>{x} days</option>)}</select></label>
-          </div>
-
-          <div className="filter-section">
-            <div className="filter-section-copy"><strong>Core research areas</strong><span>Use these presets, your own keywords below, or both.</span></div>
-            <div className="category-controls">
-              {ALL_CATEGORIES.map((category) => (
-                <label key={category} className={profile.categories.includes(category) ? 'checked' : ''}>
-                  <input type="checkbox" checked={profile.categories.includes(category)} onChange={() => toggleCategory(category)} />{category}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="filter-section custom-keyword-section">
-            <div className="filter-section-copy"><strong>Custom research keywords</strong><span>Add methods, therapeutic areas, job functions, or exact phrases. Comma-separated entry is supported.</span></div>
-            <div className="keyword-builder">
-              <input
-                value={keywordDraft}
-                onChange={(e) => setKeywordDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomKeyword() } }}
-                placeholder="e.g., pharmacoeconomics, causal inference, oncology, DCE"
-              />
-              <button className="add-keyword-btn" onClick={addCustomKeyword} disabled={!keywordDraft.trim()}><Plus size={14} /> Add</button>
-            </div>
-            {profile.customKeywords.length > 0 && (
-              <div className="custom-keyword-chips">
-                {profile.customKeywords.map((keyword) => <button key={keyword} onClick={() => removeCustomKeyword(keyword)}>{keyword}<X size={12} /></button>)}
-              </div>
-            )}
-          </div>
-
-          <div className="filter-section source-section">
-            <div className="filter-section-copy"><strong>Search sources</strong><span>LinkedIn is discovered through public job pages indexed by Google; no LinkedIn password is used.</span></div>
-            <div className="category-controls source-controls">
-              {SOURCES.map((source) => (
-                <label key={source} className={profile.sources.includes(source) ? 'checked' : ''}>
-                  <input type="checkbox" checked={profile.sources.includes(source)} onChange={() => toggleSource(source)} />
-                  {source === 'LinkedIn' && <Linkedin size={13} />}{source}
-                </label>
-              ))}
-            </div>
-            <div className="provider-call-note">Estimated provider calls this run: <strong>{estimatedCalls}</strong>. Custom keywords are grouped four per query to control API usage.</div>
-          </div>
-
-          {!canSearch && <div className="inline-warning">Select at least one core research area or add a custom keyword, plus at least one search source.</div>}
-        </section>
-
-        <CVPanel cv={cv} onChange={setCv} />
-
-        {error && <div className="error-box wide">{error}</div>}
-        {meta.queryWarnings.length > 0 && <div className="warning-box wide">Some searches were skipped: {meta.queryWarnings.join(' · ')}</div>}
-
-        <section className="list-toolbar">
-          <div className="search-field"><Search size={17} /><input value={textFilter} onChange={(e) => setTextFilter(e.target.value)} placeholder="Filter current results by company, skill, location or source…" /></div>
-          <button className={`filter-btn ${savedOnly ? 'selected' : ''}`} onClick={() => setSavedOnly((x) => !x)}><Filter size={16} /> Saved only</button>
-        </section>
-
-        {jobs.length === 0 ? (
-          <section className="empty-state">
-            <div className="empty-icon"><Search size={25} /></div>
-            <h2>{meta.searchedAt ? 'No eligible opportunities found in this search' : 'Ready for a flexible search'}</h2>
-            <p>{meta.searchedAt
-              ? `The providers returned ${meta.rawCount} raw posting${meta.rawCount === 1 ? '' : 's'}, but none passed the selected discovery gates. ${meta.zeroResultQueries} of ${meta.queriesRun} provider queries returned no jobs.`
-              : <>Choose your parameters and research keywords above. The server still enforces a maximum 30-day posting-age window and rejects unknown dates.</>}
-            </p>
-          </section>
-        ) : visibleJobs.length === 0 ? (
-          <section className="empty-state compact"><h2>No jobs match these dashboard filters.</h2><p>Your underlying search results are unchanged.</p></section>
+        {view === 'analysis' ? (
+          <>
+            {analysisError && <div className="error-box wide analysis-global-error">{analysisError}</div>}
+            <AnalysisWorkspace candidate={candidate} onCandidateChange={setCandidate} depth={depth} onDepthChange={setDepth} cv={cv} jobs={jobs} analyses={analyses} analyzingIds={analyzingIds} savedIds={savedIds} onAnalyze={analyzeJob} onToggleSave={toggleSaved} />
+            <div className="candidate-reset-row"><button className="reset-btn" onClick={resetCandidate}><RotateCcw size={14} /> Reset candidate defaults</button></div>
+          </>
         ) : (
-          <section className="jobs-list">
-            <div className="results-heading">
-              <div><h2>{visibleJobs.length} current match{visibleJobs.length === 1 ? '' : 'es'}</h2><p>{meta.searchedAt ? `Last search ${new Date(meta.searchedAt).toLocaleString()}` : ''}{cv ? ` · CV match enabled using ${cv.fileName}` : ''}</p></div>
-              <div className="audit-pill">Raw {meta.rawCount} → filtered {meta.strictCount}</div>
-            </div>
-            {visibleJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                saved={savedIds.includes(job.id)}
-                cvMatch={cvMatches.get(job.id)}
-                onToggleSave={() => setSavedIds((ids) => ids.includes(job.id) ? ids.filter((id) => id !== job.id) : [...ids, job.id])}
-              />
-            ))}
-          </section>
-        )}
+          <>
+            <header className="topbar">
+              <div>
+                <p className="eyebrow">JOB DISCOVERY + CV MATCH</p>
+                <h1>Flexible HEOR opportunity radar</h1>
+                <p>Search with your own research keywords, scan Google Jobs and public LinkedIn postings, then send promising roles to GPT-5.6 Sol.</p>
+              </div>
+              <button className="primary-btn search-now" onClick={runSearch} disabled={running || !canSearch}>
+                <RefreshCw size={17} className={running ? 'spin' : ''} /> {running ? 'Searching…' : 'Run search now'}
+              </button>
+            </header>
 
-        {meta.searchedAt && (
-          <section className="audit-card">
-            <strong>Search audit</strong>
-            <span>{meta.queriesSucceeded}/{meta.queriesRun} provider queries completed</span>
-            <span>Google Jobs {meta.sourceCounts['Google Jobs'] || 0}</span>
-            <span>LinkedIn {meta.sourceCounts.LinkedIn || 0}</span>
-            <span>{meta.zeroResultQueries} zero-result queries</span>
-            <span>{meta.excludedOld} older than {meta.cutoffDays} days</span>
-            <span>{meta.excludedUnknownDate} unknown posting date</span>
-            <span>{meta.excludedClosed} without active apply route</span>
-            <span>{meta.excludedIrrelevant} failed selected filters</span>
-          </section>
+            <section className="stats-grid">
+              <StatCard label="Eligible matches" value={jobs.length} subtext="Passed discovery gates" Icon={BriefcaseBusiness} />
+              <StatCard label="Fresh this week" value={sevenDayCount} subtext="Posted ≤7 days ago" Icon={CalendarClock} />
+              <StatCard label="Direct HEOR" value={directHeor} subtext="Core HEOR keyword match" Icon={CheckCircle2} />
+              <StatCard label="LinkedIn found" value={linkedinCount} subtext={cv ? `${analyses.size} GPT-analyzed` : 'Upload CV for match %'} Icon={Linkedin} />
+            </section>
+
+            <section className="control-panel">
+              <div className="control-title-row">
+                <div className="control-title"><SlidersHorizontal size={18} /><div><strong>Search builder</strong><span>Change parameters before each run. Choices are saved in this browser.</span></div></div>
+                <button className="reset-btn" onClick={resetProfile}><RotateCcw size={14} /> Reset</button>
+              </div>
+
+              <div className="selector-grid">
+                <label><span>Opportunity type</span><select value={profile.opportunityType} onChange={(e) => setProfile((p) => ({ ...p, opportunityType: e.target.value as OpportunityType }))}>{OPPORTUNITY_TYPES.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label><span>Target year</span><select value={profile.targetYear} onChange={(e) => setProfile((p) => ({ ...p, targetYear: e.target.value as TargetYear }))}>{YEARS.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label><span>Season</span><select value={profile.season} onChange={(e) => setProfile((p) => ({ ...p, season: e.target.value as Season }))}>{SEASONS.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label><span>Degree level</span><select value={profile.degree} onChange={(e) => setProfile((p) => ({ ...p, degree: e.target.value as DegreeLevel }))}>{DEGREES.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label><span>Work arrangement</span><select value={profile.workArrangement} onChange={(e) => setProfile((p) => ({ ...p, workArrangement: e.target.value as WorkArrangement }))}>{WORK_ARRANGEMENTS.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label><span>Country</span><select value={profile.country} onChange={(e) => setProfile((p) => ({ ...p, country: e.target.value }))}>{COUNTRIES.map((x) => <option key={x}>{x}</option>)}</select></label>
+                <label className="location-field"><span>City / state / region <em>optional</em></span><input value={profile.locationQuery} onChange={(e) => setProfile((p) => ({ ...p, locationQuery: e.target.value }))} placeholder="e.g., Boston, MA or London" /></label>
+                <label><span>Posted within</span><select value={profile.cutoffDays} onChange={(e) => setProfile((p) => ({ ...p, cutoffDays: Number(e.target.value) }))}>{CUTOFFS.map((x) => <option key={x} value={x}>{x} days</option>)}</select></label>
+              </div>
+
+              <div className="filter-section">
+                <div className="filter-section-copy"><strong>Core research areas</strong><span>Use these presets, your own keywords below, or both.</span></div>
+                <div className="category-controls">
+                  {ALL_CATEGORIES.map((category) => <label key={category} className={profile.categories.includes(category) ? 'checked' : ''}><input type="checkbox" checked={profile.categories.includes(category)} onChange={() => toggleCategory(category)} />{category}</label>)}
+                </div>
+              </div>
+
+              <div className="filter-section custom-keyword-section">
+                <div className="filter-section-copy"><strong>Custom research keywords</strong><span>Add methods, therapeutic areas, job functions, or exact phrases. Comma-separated entry is supported.</span></div>
+                <div className="keyword-builder">
+                  <input value={keywordDraft} onChange={(e) => setKeywordDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomKeyword() } }} placeholder="e.g., pharmacoeconomics, causal inference, oncology, DCE" />
+                  <button className="add-keyword-btn" onClick={addCustomKeyword} disabled={!keywordDraft.trim()}><Plus size={14} /> Add</button>
+                </div>
+                {profile.customKeywords.length > 0 && <div className="custom-keyword-chips">{profile.customKeywords.map((keyword) => <button key={keyword} onClick={() => removeCustomKeyword(keyword)}>{keyword}<X size={12} /></button>)}</div>}
+              </div>
+
+              <div className="filter-section source-section">
+                <div className="filter-section-copy"><strong>Search sources</strong><span>LinkedIn is discovered through public job pages indexed by Google; no LinkedIn password is used.</span></div>
+                <div className="category-controls source-controls">
+                  {SOURCES.map((source) => <label key={source} className={profile.sources.includes(source) ? 'checked' : ''}><input type="checkbox" checked={profile.sources.includes(source)} onChange={() => toggleSource(source)} />{source === 'LinkedIn' && <Linkedin size={13} />}{source}</label>)}
+                </div>
+                <div className="provider-call-note">Estimated provider calls this run: <strong>{estimatedCalls}</strong>. Custom keywords are grouped four per query to control API usage.</div>
+              </div>
+
+              {!canSearch && <div className="inline-warning">Select at least one core research area or add a custom keyword, plus at least one search source.</div>}
+            </section>
+
+            <CVPanel cv={cv} onChange={handleCvChange} />
+
+            {error && <div className="error-box wide">{error}</div>}
+            {analysisError && <div className="error-box wide">GPT Analysis: {analysisError}</div>}
+            {meta.queryWarnings.length > 0 && <div className="warning-box wide">Some searches were skipped: {meta.queryWarnings.join(' · ')}</div>}
+
+            <section className="list-toolbar">
+              <div className="search-field"><Search size={17} /><input value={textFilter} onChange={(e) => setTextFilter(e.target.value)} placeholder="Filter current results by company, skill, location or source…" /></div>
+              <button className={`filter-btn ${savedOnly ? 'selected' : ''}`} onClick={() => setSavedOnly((x) => !x)}><Filter size={16} /> Saved only</button>
+            </section>
+
+            {jobs.length === 0 ? (
+              <section className="empty-state">
+                <div className="empty-icon"><Search size={25} /></div>
+                <h2>{meta.searchedAt ? 'No eligible opportunities found in this search' : 'Ready for a flexible search'}</h2>
+                <p>{meta.searchedAt ? `The providers returned ${meta.rawCount} raw posting${meta.rawCount === 1 ? '' : 's'}, but none passed the selected discovery gates. ${meta.zeroResultQueries} of ${meta.queriesRun} provider queries returned no jobs.` : <>Choose your parameters and research keywords above. The server still enforces a maximum 30-day posting-age window and rejects unknown dates.</>}</p>
+              </section>
+            ) : visibleJobs.length === 0 ? (
+              <section className="empty-state compact"><h2>No jobs match these dashboard filters.</h2><p>Your underlying search results are unchanged.</p></section>
+            ) : (
+              <section className="jobs-list">
+                <div className="results-heading">
+                  <div><h2>{visibleJobs.length} current match{visibleJobs.length === 1 ? '' : 'es'}</h2><p>{meta.searchedAt ? `Last search ${new Date(meta.searchedAt).toLocaleString()}` : ''}{cv ? ` · CV match enabled using ${cv.fileName}` : ''}</p></div>
+                  <div className="audit-pill">Raw {meta.rawCount} → filtered {meta.strictCount}</div>
+                </div>
+                {visibleJobs.map((job) => <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} cvMatch={cvMatches.get(job.id)} gptAnalysis={analyses.get(job.id)} analyzing={analyzingIds.includes(job.id)} canAnalyze={Boolean(cv)} onAnalyze={() => analyzeJob(job)} onToggleSave={() => toggleSaved(job.id)} />)}
+              </section>
+            )}
+
+            {meta.searchedAt && (
+              <section className="audit-card">
+                <strong>Search audit</strong><span>{meta.queriesSucceeded}/{meta.queriesRun} provider queries completed</span><span>Google Jobs {meta.sourceCounts['Google Jobs'] || 0}</span><span>LinkedIn {meta.sourceCounts.LinkedIn || 0}</span><span>{meta.zeroResultQueries} zero-result queries</span><span>{meta.excludedOld} older than {meta.cutoffDays} days</span><span>{meta.excludedUnknownDate} unknown posting date</span><span>{meta.excludedClosed} without active apply route</span><span>{meta.excludedIrrelevant} failed selected filters</span>
+              </section>
+            )}
+          </>
         )}
       </main>
     </div>
