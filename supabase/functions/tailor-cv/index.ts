@@ -323,32 +323,61 @@ The previous generation was incomplete or malformed. Return a more selective dra
 
 function canonical(text: string) {
   return String(text || '')
+    .normalize('NFKC')
     .toLowerCase()
     .replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, '-')
+    // DOCX/PDF parsers and GPT may represent list bullets differently.
+    // These are formatting artifacts, not factual content, so normalize them away.
+    .replace(/[•◦▪▫■□●○◆◇►▸‣⁃·\u2022\uf0b7]/g, ' ')
     .replace(/\s+/g, ' ').trim()
 }
 
-function evidenceExists(evidence: string, cvCanonical: string) {
+function lexicalCanonical(text: string) {
+  return canonical(text)
+    .replace(/[^a-z0-9+#./ -]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function evidenceExists(evidence: string, cvCanonical: string, cvLexical: string) {
   const needle = canonical(evidence)
-  return needle.length >= 4 && cvCanonical.includes(needle)
+  if (needle.length < 2) return false
+  if (cvCanonical.includes(needle)) return true
+
+  const lexicalNeedle = lexicalCanonical(evidence)
+  if (!lexicalNeedle) return false
+
+  // Formatting-tolerant exact phrase check. This still requires the candidate's
+  // evidence words to appear contiguously after punctuation/bullet normalization.
+  if (cvLexical.includes(lexicalNeedle)) return true
+
+  // Short skill names such as R, SAS, SQL, SPSS, HTA, DCE can be valid evidence
+  // even when Word list formatting differs. Require a token-boundary match.
+  if (lexicalNeedle.length <= 12 && !lexicalNeedle.includes(' ')) {
+    const escaped = lexicalNeedle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(cvLexical)
+  }
+
+  return false
 }
 
 function applyFactLock(draft: any, cvText: string) {
   const cvCanonical = canonical(cvText)
+  const cvLexical = lexicalCanonical(cvText)
   const rejected: string[] = []
   let verified = 0
 
   const sections = (draft.sections || []).map((section: any) => {
     const blocks = (section.blocks || []).flatMap((block: any) => {
       const factualBlockFields = [block.heading, block.subheading, block.meta].filter((value: string) => String(value || '').trim())
-      const blockFieldsSupported = factualBlockFields.every((value: string) => evidenceExists(value, cvCanonical))
-      if (!evidenceExists(block.sourceEvidence, cvCanonical) || !blockFieldsSupported) {
+      const blockFieldsSupported = factualBlockFields.every((value: string) => evidenceExists(value, cvCanonical, cvLexical))
+      if (!evidenceExists(block.sourceEvidence, cvCanonical, cvLexical) || !blockFieldsSupported) {
         rejected.push(`Block rejected: ${block.heading || block.subheading || section.title}`)
         return []
       }
       verified += 1 + factualBlockFields.length
       const bullets = (block.bullets || []).flatMap((bullet: any) => {
-        if (!evidenceExists(bullet.sourceEvidence, cvCanonical)) {
+        if (!evidenceExists(bullet.sourceEvidence, cvCanonical, cvLexical)) {
           rejected.push(`Claim rejected: ${bullet.text}`)
           return []
         }
