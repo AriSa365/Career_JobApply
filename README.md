@@ -1,6 +1,6 @@
-# HEOR Career Agent — Phase 1
+# HEOR Career Agent — Phase 1.2
 
-A private, GitHub-ready internship discovery dashboard focused on **Summer 2027 U.S. PhD/graduate opportunities** in:
+A private, GitHub-ready HEOR career discovery dashboard with configurable opportunity type, year, season, degree, work arrangement, country, city/region, research area, recency window and search source.
 
 - Health Economics & Outcomes Research (HEOR)
 - Real-World Evidence (RWE) / Real-World Data
@@ -10,24 +10,23 @@ A private, GitHub-ready internship discovery dashboard focused on **Summer 2027 
 
 Phase 1 intentionally uses deterministic filtering rather than an LLM. Phase 2 can add GPT-based eligibility, sponsorship, fit and CV analysis without changing the search foundation.
 
-## What Phase 1 already does
+## What Phase 1.2 already does
 
-- Runs a live job search through a server-side provider integration.
-- Searches four focused HEOR/RWE/market-access/patient-centered query groups.
-- Enforces a **hard server-side maximum of 30 days**.
-- Rejects ambiguous dates such as `1 month ago` rather than guessing they are within 30 days.
-- Requires a Summer 2027 signal.
-- Requires an internship signal.
-- Requires a PhD/doctoral/graduate-level signal.
-- Requires at least one HEOR-adjacent domain signal.
-- Requires at least one current application route from the job provider.
-- Rejects obvious closed/expired language.
-- Deduplicates semantically identical title/company/location combinations.
-- Gives each retained job a transparent deterministic relevance score (not an ATS score).
-- Shows category, age, work-arrangement signals, source, keywords and application link.
-- Stores saved jobs in the browser.
-- Optionally persists search runs and jobs to Supabase for later phases.
-- Uses Supabase Auth plus a single allowed email check to prevent public abuse of the search API.
+- Searches **internships, full-time jobs, or both**.
+- Lets you choose target year (`2026`–`2029` or Any) and season (Summer/Fall/Spring/Any) independently.
+- Lets you choose degree level and work arrangement (Remote/Hybrid/On-site/Any).
+- Supports multiple countries plus an optional city/state/region field.
+- Lets you choose 7-, 14-, or 30-day posting windows; the backend still enforces a hard maximum of 30 days.
+- Searches Google Jobs and public LinkedIn job pages indexed by Google.
+- Does **not** log into LinkedIn, store a LinkedIn password, or automate LinkedIn messaging.
+- Rejects ambiguous/unknown posting dates rather than guessing they are recent.
+- Rejects obvious closed/expired language and requires an application route.
+- Deduplicates title/company/location combinations across sources.
+- Gives retained results a transparent deterministic relevance score (not an ATS score).
+- Marks LinkedIn-indexed results as **Verify details** when public snippets do not expose degree/work-mode/employment details.
+- Stores saved jobs and the current search profile in the browser.
+- Persists search runs/jobs to Supabase when the Phase 1 migration is present.
+- Uses Supabase Auth plus a single allowed email check to protect the search API.
 
 ## Architecture
 
@@ -40,10 +39,12 @@ Supabase Edge Function: search-jobs
           |
           | private SERPAPI_KEY
           v
-SerpApi Google Jobs API
+SerpApi
+   |-- Google Jobs API
+   `-- Google Search API -> public LinkedIn job pages
           |
           v
-strict filter -> dedupe -> score -> dashboard
+filter -> dedupe -> score -> dashboard
           |
           +--> Supabase Postgres (history; optional but recommended)
 ```
@@ -178,25 +179,20 @@ You can also run the same deployment manually from **Actions > CI and Deploy HEO
 
 ## Search policy in this version
 
-A job is retained only when all of these gates pass:
+The dashboard sends the selected profile to the Edge Function. The backend validates every option and applies the selected filters server-side. The recency window may be 7, 14, or 30 days, but **never more than 30 days**. Unknown dates are excluded.
 
-```text
-posting age known AND <= 30 days
-AND active apply route detected
-AND not obviously expired/closed
-AND internship signal detected
-AND Summer 2027 signal detected
-AND PhD/doctoral/graduate-level signal detected
-AND HEOR/RWE/epidemiology/market access/patient-centered signal detected
-```
-
-This policy is deliberately conservative. A posting with an unknown date is excluded instead of being silently treated as current.
+Google Jobs results are retained only when the structured posting text supports the chosen opportunity/year/season/degree/work-mode criteria. Public LinkedIn search snippets are less complete, so a LinkedIn result may be retained as a discovery candidate when the selected degree, work-mode, or employment detail is not visible; those cards are explicitly marked **Verify details**.
 
 ## Provider behavior
 
-Phase 1 uses SerpApi's Google Jobs endpoint. One run currently makes four search requests (one per query group), and the provider typically returns up to 10 jobs on the first page per query. The app then performs its own strict filtering and deduplication.
+Phase 1.2 uses the same private `SERPAPI_KEY` for two discovery channels:
 
-This means Phase 1 is a strong discovery foundation, but it is not a claim of exhaustive coverage of every employer website. Later phases can add more authorized providers and direct company-career feeds behind the same normalized job interface.
+- **Google Jobs** via SerpApi `engine=google_jobs`.
+- **LinkedIn discovery** via SerpApi Google Search (`engine=google`) restricted to public `linkedin.com/jobs/view` pages and the selected country.
+
+The query builder groups the selected research areas in pairs to control API usage. The dashboard shows the estimated provider-call count before each run. Selecting fewer sources or research areas reduces calls.
+
+The LinkedIn channel is intentionally public-index discovery rather than authenticated LinkedIn automation. It opens the original LinkedIn posting for verification/application.
 
 ## What is deliberately NOT in Phase 1
 
@@ -206,7 +202,7 @@ This means Phase 1 is a strong discovery foundation, but it is not a claim of ex
 - ATS/job-CV alignment analysis
 - recruiter/hiring-manager discovery
 - Gmail outreach
-- LinkedIn messaging
+- LinkedIn messaging or authenticated LinkedIn scraping
 - automatic final job submission
 - scheduled 8:00 AM search inside this app
 

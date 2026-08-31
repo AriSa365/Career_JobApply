@@ -1,4 +1,10 @@
 export type JobCategory = 'HEOR' | 'RWE / Epidemiology' | 'Market Access' | 'Patient-Centered' | 'Other'
+export type OpportunityType = 'Internship' | 'Full-time job' | 'Any'
+export type TargetYear = 'Any' | '2026' | '2027' | '2028' | '2029'
+export type Season = 'Any' | 'Summer' | 'Fall' | 'Spring'
+export type DegreeLevel = 'Any' | 'PhD / Doctoral' | 'Graduate' | 'Master\'s' | 'Bachelor\'s'
+export type WorkArrangement = 'Any' | 'Remote' | 'Hybrid' | 'On-site'
+export type SearchSource = 'Google Jobs' | 'LinkedIn'
 
 export interface ApplyOption {
   title: string
@@ -11,6 +17,7 @@ export interface Job {
   company: string
   location: string
   via: string
+  source: SearchSource
   description: string
   postedAtLabel: string
   postedAtISO: string
@@ -21,9 +28,12 @@ export interface Job {
   matchScore: number
   isRemote: boolean
   isHybrid: boolean
+  isOnsite: boolean
+  opportunityType: OpportunityType
   degreeSignal: string
   sourceQuery: string
   highlights: string[]
+  needsVerification: boolean
 }
 
 export interface SearchMeta {
@@ -39,6 +49,7 @@ export interface SearchMeta {
   excludedUnknownDate: number
   excludedClosed: number
   excludedIrrelevant: number
+  sourceCounts: Partial<Record<SearchSource, number>>
 }
 
 export interface SearchResponse {
@@ -47,10 +58,14 @@ export interface SearchResponse {
 }
 
 export interface SearchProfile {
-  cutoffDays: 30
-  country: 'United States'
-  season: 'Summer 2027'
-  degree: 'PhD / Doctoral / Graduate'
-  includeRemote: boolean
+  cutoffDays: number
+  opportunityType: OpportunityType
+  targetYear: TargetYear
+  season: Season
+  degree: DegreeLevel
+  workArrangement: WorkArrangement
+  country: string
+  locationQuery: string
+  sources: SearchSource[]
   categories: JobCategory[]
 }

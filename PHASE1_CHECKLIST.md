@@ -1,24 +1,20 @@
-# Phase 1 acceptance checklist
+# Phase 1.2 verification checklist
 
-- [x] React/Vite dashboard
-- [x] Supabase Auth gate
-- [x] Single-user Edge Function authorization
-- [x] Server-side job-provider secret
-- [x] Four HEOR-focused search groups
-- [x] Server-side 30-day maximum
-- [x] Unknown/ambiguous date rejection
-- [x] Summer 2027 filter
-- [x] PhD/graduate signal filter
-- [x] Internship filter
-- [x] HEOR-adjacent relevance filter
-- [x] Obvious closed-job rejection
-- [x] Active application route required
-- [x] Deduplication
-- [x] Transparent deterministic match score
-- [x] Dashboard keyword/category filters
-- [x] Saved-job browser state
-- [x] Search audit counts
-- [x] Optional Supabase persistence
-- [x] GitHub Pages deploy workflow
-- [ ] Live provider smoke test (requires user's SerpApi + Supabase credentials)
-- [ ] Production deployment to user's GitHub/Supabase
+- [ ] GitHub Actions build succeeds.
+- [ ] Supabase `search-jobs` Edge Function deploys.
+- [ ] GitHub Pages deploys.
+- [ ] Login works for the `ALLOWED_EMAIL` account.
+- [ ] Opportunity type dropdown changes Internship / Full-time job / Any.
+- [ ] Target year and season can be changed independently.
+- [ ] Degree and work arrangement dropdowns work.
+- [ ] Country dropdown and optional city/state/region field work.
+- [ ] Posting-age dropdown supports 7 / 14 / 30 days; backend never accepts >30.
+- [ ] At least one research category and one source are required.
+- [ ] Google Jobs source returns structured results when available.
+- [ ] LinkedIn source opens public `linkedin.com/jobs/view` postings when available.
+- [ ] LinkedIn cards with incomplete snippets display `Verify details`.
+- [ ] Unknown/ambiguous posting dates are excluded.
+- [ ] Results deduplicate across search queries/sources.
+- [ ] Provider-call estimate changes with selected categories/sources.
+- [ ] Search profile persists after browser refresh.
+- [ ] Saved jobs persist after browser refresh.
