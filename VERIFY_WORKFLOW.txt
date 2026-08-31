@@ -1,0 +1,14 @@
+The real GitHub Actions workflow is:
+.github/workflows/deploy.yml
+
+On macOS Finder, folders beginning with a dot are hidden.
+Press Command + Shift + . to show hidden files/folders.
+
+A visible duplicate is also included at:
+WORKFLOW_VISIBLE/deploy.yml
+
+GitHub ONLY executes workflows from .github/workflows/.
+If needed, run:
+  ./install-workflow.sh
+or on PowerShell:
+  ./install-workflow.ps1
