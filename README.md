@@ -132,21 +132,49 @@ npm run dev
 
 Sign in with the Supabase Auth user you created, then click **Run search now**.
 
-## 8. Deploy to GitHub Pages
+## 8. Deploy from GitHub Actions
 
-The repo includes `.github/workflows/deploy.yml`.
+The repo includes `.github/workflows/deploy.yml`. A push to `main` now deploys **both** the Supabase backend and the GitHub Pages frontend. Pull requests only build the app and do not deploy.
 
-In GitHub:
+### GitHub repository secrets
 
-1. Create a repository and push this project to `main`.
-2. Go to **Settings > Secrets and variables > Actions**.
-3. Add repository secrets:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-4. Go to **Settings > Pages** and select **GitHub Actions** as the source if needed.
-5. Push to `main` or manually run the workflow.
+Go to **Settings > Secrets and variables > Actions > New repository secret** and add:
 
-Because `vite.config.ts` uses `base: './'`, the same build can run from a GitHub Pages project subpath.
+- `VITE_SUPABASE_URL` — Supabase project URL
+- `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase publishable/anon key used by the browser
+- `SUPABASE_ACCESS_TOKEN` — personal Supabase access token for the CLI
+- `SUPABASE_PROJECT_ID` — your Supabase project reference ID
+- `SUPABASE_DB_PASSWORD` — database password for migration deployment
+- `SERPAPI_KEY` — private SerpApi key; the workflow syncs it to Supabase Edge Function secrets
+- `ALLOWED_EMAIL` — the single email address allowed to use the search function
+
+Do **not** put these values in source code or commit a `.env` file.
+
+### Enable GitHub Pages
+
+In the repository, open **Settings > Pages** and set **Source** to **GitHub Actions**.
+
+### What happens on every push to `main`
+
+```text
+Push to main
+    ↓
+Build React/Vite frontend
+    ↓
+Link Supabase project
+    ↓
+Apply supabase/migrations/*
+    ↓
+Sync SERPAPI_KEY + ALLOWED_EMAIL to Supabase
+    ↓
+Deploy Supabase Edge Functions
+    ↓
+Deploy dist/ to GitHub Pages
+```
+
+You can also run the same deployment manually from **Actions > CI and Deploy HEOR Career Agent > Run workflow**.
+
+> Note: the `.github` directory begins with a dot, so some local file browsers hide it by default. GitHub itself will display `.github/workflows/deploy.yml` normally after you push the repository.
 
 ## Search policy in this version
 
