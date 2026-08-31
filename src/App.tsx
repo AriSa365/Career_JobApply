@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Wifi,
+  UsersRound,
   X,
 } from 'lucide-react'
 import AnalysisWorkspace from './components/AnalysisWorkspace'
@@ -24,6 +25,7 @@ import CVPanel from './components/CVPanel'
 import CvTailoringWorkspace from './components/CvTailoringWorkspace'
 import JobCard from './components/JobCard'
 import Login from './components/Login'
+import NetworkingWorkspace from './components/NetworkingWorkspace'
 import StatCard from './components/StatCard'
 import { DEFAULT_CANDIDATE_PROFILE, loadCandidateProfile } from './lib/candidate'
 import { calculateCvMatch } from './lib/cv'
@@ -66,7 +68,7 @@ const WORK_ARRANGEMENTS: WorkArrangement[] = ['Any', 'Remote', 'Hybrid', 'On-sit
 const SOURCES: SearchSource[] = ['Google Jobs', 'LinkedIn']
 const CUTOFFS = [7, 14, 30]
 
-type View = 'discovery' | 'analysis' | 'tailoring' | 'applications'
+type View = 'discovery' | 'analysis' | 'tailoring' | 'applications' | 'networking'
 
 
 const DEFAULT_TAILOR_SETTINGS: CvTailoringSettings = {
@@ -519,7 +521,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small"><BriefcaseBusiness size={21} /></div>
-          <div><strong>HEOR Career Agent</strong><span>Phase 4.2</span></div>
+          <div><strong>HEOR Career Agent</strong><span>Phase 5</span></div>
         </div>
 
         <div className="profile-card">
@@ -535,6 +537,7 @@ export default function App() {
           <button className={view === 'analysis' ? 'active' : ''} onClick={() => setView('analysis')}><Sparkles size={17} /> GPT Analysis <em>{analyses.size || ''}</em></button>
           <button className={view === 'tailoring' ? 'active' : ''} onClick={() => setView('tailoring')}><FilePenLine size={17} /> CV Tailoring <em>{tailoredCvs.size || ''}</em></button>
           <button className={view === 'applications' ? 'active' : ''} onClick={() => setView('applications')}><CheckCircle2 size={17} /> Applications <em>{applications.size || ''}</em></button>
+          <button className={view === 'networking' ? 'active' : ''} onClick={() => setView('networking')}><UsersRound size={17} /> Recruiter Outreach</button>
         </nav>
 
         <div className="sidebar-bottom">
@@ -544,7 +547,9 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        {view === 'applications' ? (
+        {view === 'networking' ? (
+          <NetworkingWorkspace applications={applications} analyses={analyses} cv={cv} candidate={candidate} depth={depth} />
+        ) : view === 'applications' ? (
           <>
             {applicationError && <div className="error-box wide analysis-global-error">Applications: {applicationError}</div>}
             <ApplicationsWorkspace jobs={jobs} analyses={analyses} tailoredCvs={tailoredCvs} cv={cv} applications={applications} packages={applicationPackages} selectedApplicationId={selectedApplicationId} generatingIds={preparingApplicationIds} onSelectApplicationId={setSelectedApplicationId} onTrackJob={trackApplication} onUpdateApplication={updateApplication} onRemoveApplication={removeApplication} onGeneratePackage={prepareApplication} onPackageChange={updateApplicationPackage} />

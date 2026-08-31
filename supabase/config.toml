@@ -11,3 +11,9 @@ verify_jwt = true
 
 [functions.prepare-application]
 verify_jwt = true
+
+[functions.find-contacts]
+verify_jwt = true
+
+[functions.prepare-outreach]
+verify_jwt = true

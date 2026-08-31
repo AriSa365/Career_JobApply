@@ -1,41 +1,56 @@
-# HEOR Career Agent — Phase 4.2
+# HEOR Career Agent — Phase 5
 
-A private HEOR/RWE career application workspace deployed with GitHub Pages + Supabase.
+A private HEOR/RWE career workspace deployed with GitHub Pages + Supabase.
 
-## Phase 4.2 pipeline
+## Current pipeline
 
-1. **Job Discovery** — configurable Google Jobs + public LinkedIn discovery with recency filtering.
-2. **GPT Analysis** — GPT-5.6 Luna evaluates eligibility, sponsorship/CPT risk, HEOR relevance, and semantic CV fit by default. GPT-5.6 Sol is reserved for optional Deep Review.
+1. **Job Discovery** — configurable Google Jobs + public LinkedIn job discovery with a strict recency gate.
+2. **GPT Analysis** — GPT-5.6 Luna evaluates eligibility, sponsorship/CPT risk, HEOR relevance and semantic CV fit by default. GPT-5.6 Sol is optional Deep Review.
 3. **CV Tailoring** — fact-locked job-specific CV generation with editable DOCX download.
-4. **Applications** — application tracker + fact-locked cover letter and application-answer package.
+4. **Applications** — application tracker + fact-locked cover letter and employer-question package.
+5. **Recruiter Outreach** — public recruiter/HEOR-leader discovery + fact-locked LinkedIn/email drafting and follow-up tracking.
 
-The app intentionally keeps the final employer/LinkedIn **Submit** click with the user.
+The app intentionally keeps the final employer application submission, LinkedIn message send, and Gmail send under the user's control.
 
-## Phase 4.2 features
+## Phase 5 contact discovery
 
-- Track each application separately.
-- Store status, deadline, applied date, follow-up date, and notes.
-- Mark an application as submitted after you complete the employer form.
-- Generate a job-specific application package only after Phase 2 analysis + Phase 3 CV tailoring.
-- Add employer-specific questions and character limits before generating answers.
-- Download an editable cover letter DOCX.
-- Copy individual answers or the full application package.
-- Review work-authorization and future-sponsorship guidance before answering employer questions.
-- Persist application records and generated packages in Supabase under Row Level Security.
+Phase 5 works from a tracked application with a resolved employer name. It performs two public Google searches through SerpApi:
 
+- likely university / early-career / talent-acquisition contacts at the employer;
+- likely HEOR, RWE, epidemiology, market-access, value/evidence or evidence-generation leaders at the employer.
 
-### Phase 4.2 quality guardrails
+Only public LinkedIn profile URLs are collected. The app does **not** log into LinkedIn, use your LinkedIn password, or scrape a private session.
 
-- `SKIP` or `Eligibility FAIL` roles are blocked from package generation and submission-state changes by default.
-- Continuing a blocked role requires an explicit manual override with a written reason.
-- `REVIEW` roles remain usable but display a prominent verification warning.
-- Employer names that could not be parsed during discovery are recovered from the public application page when possible.
-- If recovery fails, the user must enter the employer name manually before an application package can be generated. GPT is never asked to guess the company.
-- Guardrail overrides and company-resolution status persist in Supabase.
+Contacts are ranked deterministically and show why they were surfaced. A profile is treated as a **likely relevant contact**, not as a confirmed hiring manager unless public evidence explicitly supports that claim.
+
+## Phase 5 outreach generation
+
+For a selected contact, `prepare-outreach` can generate:
+
+- LinkedIn connection note (<=280 characters);
+- LinkedIn follow-up message;
+- recruiter/networking email subject;
+- recruiter/networking email body;
+- personalization points and cautions.
+
+Candidate claims are fact-locked to exact evidence from the uploaded master CV. GPT is not allowed to invent skills, experience, degrees, publications or achievements.
+
+The default model remains **GPT-5.6 Luna**. Deep Review uses **GPT-5.6 Sol** only when deliberately selected.
+
+## Email / LinkedIn sending
+
+Phase 5 does not automatically send messages.
+
+- **Open LinkedIn** opens the public profile so you can paste/review the prepared note.
+- **Open Gmail compose** opens Gmail with the verified work/public email, subject and body prefilled.
+- No personal email address is guessed or inferred. Enter an email only when it is publicly listed or otherwise verified.
+- **Mark outreach sent** records the outreach and sets a 7-day follow-up date.
+
+A future Gmail OAuth integration could add an authorized send-with-confirmation action, but it is intentionally not required for Phase 5.
 
 ## Required GitHub Actions secrets
 
-No new secret is required for Phase 4. Keep the existing secrets:
+No new secret is required for Phase 5. Keep:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -48,38 +63,27 @@ No new secret is required for Phase 4. Keep the existing secrets:
 
 ## Deploy
 
-Push the complete project to `main`. The existing GitHub Action will:
+Push the complete project to `main`. GitHub Actions will:
 
 1. install dependencies;
 2. build the Vite/React frontend;
-3. run Supabase migrations, including `004_phase4.sql` and `005_phase4_2.sql`;
-4. deploy all Edge Functions, including `prepare-application`;
+3. apply migrations through `006_phase5.sql`;
+4. deploy all Edge Functions, including `find-contacts` and `prepare-outreach`;
 5. deploy GitHub Pages.
 
-No manual Supabase SQL step is needed when the workflow is configured correctly.
+## Phase 5 database objects
 
-## Phase 4 database objects
+### `networking_contacts`
+Stores public contact metadata, relevance ranking, status, follow-up date, notes and optional verified business email under RLS.
 
-### `applications`
-Stores the authenticated user's job snapshot and application status metadata.
+### `outreach_messages`
+Stores generated/edited LinkedIn and email drafts, fact-lock audit fields, status and follow-up dates under RLS.
 
-### `application_packages`
-Stores generated structured application packages. The protected Edge Function performs writes; users can read only their own packages.
-
-The raw uploaded master CV is **not** stored in either Phase 4 table.
-
-## Application Pack fact lock
-
-The master CV remains the factual authority for candidate claims. Each generated cover-letter paragraph and each generated application answer must include exact source evidence from the uploaded CV. The backend rejects generated items whose evidence cannot be found.
-
-Work-authorization guidance is generated separately from the candidate profile because employer questions differ. Always read the exact employer wording before selecting a Yes/No response.
-
+The raw uploaded master CV is not stored in either table.
 
 ## AI model routing
-
-The app is cost-optimized by default:
 
 - **Standard (default):** `gpt-5.6-luna`
 - **Deep Review (optional):** `gpt-5.6-sol`
 
-The selected model is applied consistently to job analysis, CV tailoring, and application-package generation. The app starts in Standard mode after a fresh load.
+The same selected reasoning mode applies to job analysis, CV tailoring, application packages and Phase 5 outreach generation.

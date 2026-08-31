@@ -285,3 +285,74 @@ export interface PrepareApplicationResponse {
     source: string
   }
 }
+
+export type ContactRoleCategory = 'RECRUITER' | 'HIRING_MANAGER' | 'HEOR_RWE_LEADER' | 'OTHER'
+export type ContactStatus = 'Discovered' | 'Saved' | 'Contacted' | 'Replied' | 'Follow-up due' | 'Closed'
+export type OutreachStatus = 'Draft' | 'Sent' | 'Replied' | 'Closed'
+
+export interface NetworkingContact {
+  id: string
+  applicationId: string
+  jobId: string
+  name: string
+  title: string
+  company: string
+  location: string
+  linkedinUrl: string
+  sourceUrl: string
+  sourceSnippet: string
+  publicEmail: string
+  roleCategory: ContactRoleCategory
+  relevanceScore: number
+  relevanceReasons: string[]
+  discoveryQuery: string
+  status: ContactStatus
+  followUpAt: string
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContactDiscoveryResponse {
+  contacts: NetworkingContact[]
+  meta: {
+    searchedAt: string
+    company: string
+    queriesRun: number
+    contactsFound: number
+    warnings: string[]
+    phase2Recommendation: string
+  }
+}
+
+export interface OutreachDraft {
+  id: string
+  applicationId: string
+  jobId: string
+  contactId: string
+  generatedAt: string
+  model: string
+  linkedinConnectionNote: string
+  linkedinFollowUp: string
+  emailSubject: string
+  emailBody: string
+  personalizationPoints: string[]
+  cautions: string[]
+  factLock: {
+    passed: boolean
+    verifiedEvidence: number
+    rejectedItems: string[]
+  }
+  status: OutreachStatus
+  sentAt: string
+  followUpAt: string
+}
+
+export interface PrepareOutreachResponse {
+  outreach: OutreachDraft
+  usage?: {
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
+  }
+}
