@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clipboard, Download, FileCheck2, FilePenLine, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { AlertTriangle, Clipboard, Download, FileCheck2, FilePenLine, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 import { downloadTailoredCvDocx, downloadTailoringAudit, tailoredCvToPlainText } from '../lib/docx'
 import type { CvProfile, CvTailoringEmphasis, CvTailoringFormat, CvTailoringSettings, GptAnalysis, Job, TailoredCvDocument } from '../types'
 
