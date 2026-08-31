@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Filter,
+  FilePenLine,
   Linkedin,
   LogOut,
   Plus,
@@ -19,6 +20,7 @@ import {
 import AnalysisWorkspace from './components/AnalysisWorkspace'
 import ConfigMissing from './components/ConfigMissing'
 import CVPanel from './components/CVPanel'
+import CvTailoringWorkspace from './components/CvTailoringWorkspace'
 import JobCard from './components/JobCard'
 import Login from './components/Login'
 import StatCard from './components/StatCard'
@@ -29,6 +31,7 @@ import type {
   AnalysisDepth,
   AnalyzeJobResponse,
   CandidateProfile,
+  CvTailoringSettings,
   CvProfile,
   DegreeLevel,
   GptAnalysis,
@@ -40,6 +43,8 @@ import type {
   SearchResponse,
   SearchSource,
   Season,
+  TailoredCvDocument,
+  TailorCvResponse,
   TargetYear,
   WorkArrangement,
 } from './types'
@@ -57,7 +62,13 @@ const WORK_ARRANGEMENTS: WorkArrangement[] = ['Any', 'Remote', 'Hybrid', 'On-sit
 const SOURCES: SearchSource[] = ['Google Jobs', 'LinkedIn']
 const CUTOFFS = [7, 14, 30]
 
-type View = 'discovery' | 'analysis'
+type View = 'discovery' | 'analysis' | 'tailoring'
+
+
+const DEFAULT_TAILOR_SETTINGS: CvTailoringSettings = {
+  format: 'Industry CV · 2 pages',
+  emphasis: 'Balanced',
+}
 
 const DEFAULT_PROFILE: SearchProfile = {
   cutoffDays: 30,
@@ -103,6 +114,21 @@ function storedAnalyses(): Map<string, GptAnalysis> {
   } catch { return new Map() }
 }
 
+
+function storedTailoredCvs(): Map<string, TailoredCvDocument> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('heor-tailored-cvs') || '{}') as Record<string, TailoredCvDocument>
+    return new Map(Object.entries(parsed))
+  } catch { return new Map() }
+}
+
+function storedTailorSettings(): CvTailoringSettings {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('heor-tailor-settings') || 'null')
+    return parsed ? { ...DEFAULT_TAILOR_SETTINGS, ...parsed } : DEFAULT_TAILOR_SETTINGS
+  } catch { return DEFAULT_TAILOR_SETTINGS }
+}
+
 function yearSeasonLabel(profile: SearchProfile) {
   return [profile.season !== 'Any' ? profile.season : '', profile.targetYear !== 'Any' ? profile.targetYear : ''].filter(Boolean).join(' ') || 'Any year / season'
 }
@@ -133,6 +159,11 @@ export default function App() {
   const [candidate, setCandidate] = useState<CandidateProfile>(loadCandidateProfile)
   const [depth, setDepth] = useState<AnalysisDepth>('Deep')
   const [analyses, setAnalyses] = useState<Map<string, GptAnalysis>>(storedAnalyses)
+  const [tailoredCvs, setTailoredCvs] = useState<Map<string, TailoredCvDocument>>(storedTailoredCvs)
+  const [tailorSettings, setTailorSettings] = useState<CvTailoringSettings>(storedTailorSettings)
+  const [selectedTailorJobId, setSelectedTailorJobId] = useState('')
+  const [tailoringIds, setTailoringIds] = useState<string[]>([])
+  const [tailorError, setTailorError] = useState('')
   const [analyzingIds, setAnalyzingIds] = useState<string[]>([])
   const [keywordDraft, setKeywordDraft] = useState('')
   const [running, setRunning] = useState(false)
@@ -159,6 +190,11 @@ export default function App() {
     const obj = Object.fromEntries(analyses.entries())
     localStorage.setItem('heor-gpt-analyses', JSON.stringify(obj))
   }, [analyses])
+  useEffect(() => {
+    const obj = Object.fromEntries(tailoredCvs.entries())
+    localStorage.setItem('heor-tailored-cvs', JSON.stringify(obj))
+  }, [tailoredCvs])
+  useEffect(() => localStorage.setItem('heor-tailor-settings', JSON.stringify(tailorSettings)), [tailorSettings])
   useEffect(() => {
     if (cv) localStorage.setItem('heor-cv-profile', JSON.stringify(cv))
     else localStorage.removeItem('heor-cv-profile')
@@ -219,6 +255,7 @@ export default function App() {
     const changed = nextCv?.uploadedAt !== cv?.uploadedAt
     setCv(nextCv)
     if (changed && analyses.size > 0) setAnalyses(new Map())
+    if (changed && tailoredCvs.size > 0) setTailoredCvs(new Map())
   }
 
   async function runSearch() {
@@ -257,6 +294,44 @@ export default function App() {
     }
   }
 
+  async function tailorJob(job: Job) {
+    if (!supabase || !cv) {
+      setTailorError('Upload a master CV before tailoring.')
+      return
+    }
+    const analysis = analyses.get(job.id)
+    if (!analysis) {
+      setTailorError('Run Phase 2 GPT analysis for this job before tailoring.')
+      return
+    }
+    setTailoringIds((ids) => Array.from(new Set([...ids, job.id])))
+    setTailorError('')
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke<TailorCvResponse>('tailor-cv', {
+        body: { job, cv, candidate, analysis, settings: tailorSettings, depth },
+      })
+      if (invokeError) throw invokeError
+      if (!data?.tailoredCv) throw new Error('CV tailoring returned no document.')
+      setTailoredCvs((current) => new Map(current).set(job.id, data.tailoredCv))
+      setSelectedTailorJobId(job.id)
+      setView('tailoring')
+    } catch (err) {
+      setTailorError(await readableFunctionError(err))
+    } finally {
+      setTailoringIds((ids) => ids.filter((id) => id !== job.id))
+    }
+  }
+
+  function openTailoring(job: Job) {
+    setSelectedTailorJobId(job.id)
+    setTailorError('')
+    setView('tailoring')
+  }
+
+  function updateTailoredDocument(jobId: string, document: TailoredCvDocument) {
+    setTailoredCvs((current) => new Map(current).set(jobId, document))
+  }
+
   function toggleSaved(jobId: string) {
     setSavedIds((ids) => ids.includes(jobId) ? ids.filter((id) => id !== jobId) : [...ids, jobId])
   }
@@ -273,7 +348,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small"><BriefcaseBusiness size={21} /></div>
-          <div><strong>HEOR Career Agent</strong><span>Phase 2</span></div>
+          <div><strong>HEOR Career Agent</strong><span>Phase 3</span></div>
         </div>
 
         <div className="profile-card">
@@ -287,6 +362,7 @@ export default function App() {
         <nav className="side-nav">
           <button className={view === 'discovery' ? 'active' : ''} onClick={() => setView('discovery')}><Search size={17} /> Job Discovery</button>
           <button className={view === 'analysis' ? 'active' : ''} onClick={() => setView('analysis')}><Sparkles size={17} /> GPT Analysis <em>{analyses.size || ''}</em></button>
+          <button className={view === 'tailoring' ? 'active' : ''} onClick={() => setView('tailoring')}><FilePenLine size={17} /> CV Tailoring <em>{tailoredCvs.size || ''}</em></button>
           <button disabled><CheckCircle2 size={17} /> Applications <em>Later</em></button>
         </nav>
 
@@ -297,10 +373,15 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        {view === 'analysis' ? (
+        {view === 'tailoring' ? (
+          <>
+            {tailorError && <div className="error-box wide analysis-global-error">CV Tailoring: {tailorError}</div>}
+            <CvTailoringWorkspace cv={cv} jobs={jobs} analyses={analyses} tailoredCvs={tailoredCvs} selectedJobId={selectedTailorJobId} onSelectJobId={setSelectedTailorJobId} settings={tailorSettings} onSettingsChange={setTailorSettings} generatingIds={tailoringIds} onGenerate={tailorJob} onDocumentChange={updateTailoredDocument} />
+          </>
+        ) : view === 'analysis' ? (
           <>
             {analysisError && <div className="error-box wide analysis-global-error">{analysisError}</div>}
-            <AnalysisWorkspace candidate={candidate} onCandidateChange={setCandidate} depth={depth} onDepthChange={setDepth} cv={cv} jobs={jobs} analyses={analyses} analyzingIds={analyzingIds} savedIds={savedIds} onAnalyze={analyzeJob} onToggleSave={toggleSaved} />
+            <AnalysisWorkspace candidate={candidate} onCandidateChange={setCandidate} depth={depth} onDepthChange={setDepth} cv={cv} jobs={jobs} analyses={analyses} analyzingIds={analyzingIds} savedIds={savedIds} onAnalyze={analyzeJob} onTailor={openTailoring} onToggleSave={toggleSaved} />
             <div className="candidate-reset-row"><button className="reset-btn" onClick={resetCandidate}><RotateCcw size={14} /> Reset candidate defaults</button></div>
           </>
         ) : (
@@ -392,7 +473,7 @@ export default function App() {
                   <div><h2>{visibleJobs.length} current match{visibleJobs.length === 1 ? '' : 'es'}</h2><p>{meta.searchedAt ? `Last search ${new Date(meta.searchedAt).toLocaleString()}` : ''}{cv ? ` · CV match enabled using ${cv.fileName}` : ''}</p></div>
                   <div className="audit-pill">Raw {meta.rawCount} → filtered {meta.strictCount}</div>
                 </div>
-                {visibleJobs.map((job) => <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} cvMatch={cvMatches.get(job.id)} gptAnalysis={analyses.get(job.id)} analyzing={analyzingIds.includes(job.id)} canAnalyze={Boolean(cv)} onAnalyze={() => analyzeJob(job)} onToggleSave={() => toggleSaved(job.id)} />)}
+                {visibleJobs.map((job) => <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} cvMatch={cvMatches.get(job.id)} gptAnalysis={analyses.get(job.id)} analyzing={analyzingIds.includes(job.id)} canAnalyze={Boolean(cv)} onAnalyze={() => analyzeJob(job)} onTailor={analyses.has(job.id) ? () => openTailoring(job) : undefined} onToggleSave={() => toggleSaved(job.id)} />)}
               </section>
             )}
 

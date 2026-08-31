@@ -1,4 +1,4 @@
-import { Bookmark, BookmarkCheck, Building2, CalendarDays, ExternalLink, Linkedin, Loader2, MapPin, ShieldAlert, Sparkles } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Building2, CalendarDays, ExternalLink, FilePenLine, Linkedin, Loader2, MapPin, ShieldAlert, Sparkles } from 'lucide-react'
 import type { CvMatch, GptAnalysis, Job } from '../types'
 import GptAnalysisPanel from './GptAnalysisPanel'
 
@@ -17,6 +17,7 @@ export default function JobCard({
   analyzing,
   canAnalyze,
   onAnalyze,
+  onTailor,
 }: {
   job: Job
   saved: boolean
@@ -26,6 +27,7 @@ export default function JobCard({
   analyzing?: boolean
   canAnalyze?: boolean
   onAnalyze?: () => void
+  onTailor?: () => void
 }) {
   return (
     <article className="job-card">
@@ -109,6 +111,9 @@ export default function JobCard({
             <button className="analyze-btn" onClick={onAnalyze} disabled={!canAnalyze || analyzing} title={!canAnalyze ? 'Upload a CV before GPT analysis' : 'Analyze the full role against your CV'}>
               {analyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} {analyzing ? 'Analyzing…' : gptAnalysis ? 'Re-analyze' : 'Analyze with GPT'}
             </button>
+          )}
+          {gptAnalysis && onTailor && (
+            <button className="tailor-btn" onClick={onTailor} title="Create a separate fact-locked job-specific CV"><FilePenLine size={15} /> Tailor CV</button>
           )}
           <button className="icon-btn" onClick={onToggleSave} title={saved ? 'Remove saved job' : 'Save job'}>
             {saved ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}

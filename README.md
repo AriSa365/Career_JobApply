@@ -1,135 +1,93 @@
-# HEOR Career Agent — Phase 2
+# HEOR Career Agent — Phase 3
 
-A private career-search dashboard for HEOR/RWE/health economics and adjacent opportunities.
+Phase 3 extends the HEOR Career Agent from job discovery and GPT eligibility analysis into **fact-locked, job-specific CV tailoring**.
 
-Phase 2 adds GPT-5.6 Sol job intelligence on top of the existing flexible job discovery, LinkedIn public-job discovery, local CV parsing, and deterministic CV match.
+## Current pipeline
 
-## What Phase 2 does
+1. **Job Discovery**
+   - Google Jobs + public LinkedIn job pages
+   - configurable opportunity type, year, season, degree, work arrangement, country, location, recency, research areas, and custom keywords
+   - hard maximum 30-day posting-age gate
+2. **CV Match**
+   - local DOCX/PDF/TXT parsing
+   - preliminary transparent job–CV alignment score
+3. **GPT Analysis**
+   - GPT-5.6 Sol semantic fit analysis
+   - graduation/degree eligibility
+   - CPT and sponsorship reasoning
+   - APPLY / REVIEW / SKIP
+4. **CV Tailoring (Phase 3)**
+   - job-specific CV draft
+   - evidence-linked rewrites
+   - server-side fact-lock validation
+   - editable preview
+   - editable DOCX export
+   - audit JSON export
 
-1. Search recent opportunities through Google Jobs and public LinkedIn job pages indexed by Google.
-2. Apply configurable filters for opportunity type, year, season, degree, work arrangement, country/region, recency, research areas, and custom keywords.
-3. Upload a DOCX/PDF/TXT CV and calculate a transparent preliminary keyword match locally.
-4. Click **Analyze with GPT** on an individual job.
-5. The protected `analyze-job` Edge Function:
-   - authenticates the user;
-   - attempts to read the public application page;
-   - sends job evidence + extracted CV text + candidate eligibility profile to GPT-5.6 Sol;
-   - may use OpenAI web search to corroborate public job details;
-   - returns structured eligibility, sponsorship, semantic-fit, and CV-tailoring analysis.
-6. The app displays **APPLY / REVIEW / SKIP** plus evidence and uncertainty.
+## Phase 3 integrity model
 
-## Phase 2 decision fields
+The master CV remains the factual source. The `tailor-cv` Edge Function tells GPT that every generated block and bullet must include an **exact contiguous evidence excerpt** copied from the uploaded master CV. The server then checks those excerpts against the master CV before returning the draft.
 
-- Recommendation: APPLY / REVIEW / SKIP
-- Eligibility: PASS / REVIEW / FAIL
-- Sponsorship: COMPATIBLE / UNKNOWN / INCOMPATIBLE
-- Semantic CV match: 0–100
-- Overall fit: 0–100
-- HEOR relevance: HIGH / MEDIUM / LOW
-- Job-description evidence: FULL / PARTIAL / SNIPPET
-- Required and preferred qualifications
-- Strong matches and gaps
-- Important job-description/ATS terms
-- Truthful CV-tailoring actions
-- Caution flags and evidence notes
-- Public source links
+If an evidence excerpt cannot be found:
+- the unsupported block/claim is removed;
+- it is listed under rejected claims;
+- projected alignment is penalized;
+- the job requirement stays a gap rather than becoming fake experience.
 
-The scores are **not an employer ATS score**.
+This reduces hallucinated CV content but does not replace final human review. Manual browser edits after generation are explicitly marked as needing re-review.
 
-## Privacy behavior
+## Privacy
 
 - Raw CV files are parsed in the browser.
-- Search providers do not receive the CV.
-- Phase 2 sends extracted CV text to the protected Supabase Edge Function only when the user explicitly clicks **Analyze with GPT**.
-- That extracted CV text is sent to the OpenAI API for analysis.
-- Raw CV text is not stored in the `job_analyses` database table.
-- Completed structured analyses may be persisted in Supabase and cached in the browser.
+- Raw CV text is sent to the protected `analyze-job` and `tailor-cv` Edge Functions only when the user explicitly requests GPT work.
+- The `job_analyses` table does not store the raw master CV.
+- The `cv_versions` table stores generated tailored document JSON/version metadata, not the raw master CV.
+- SerpApi does not receive the CV.
+- `OPENAI_API_KEY`, `SERPAPI_KEY`, and other server secrets never go to GitHub Pages frontend code.
 
 ## Required GitHub Actions secrets
 
-Repository → Settings → Secrets and variables → Actions:
+Phase 3 uses the same secrets as Phase 2:
 
-```text
-VITE_SUPABASE_URL
-VITE_SUPABASE_PUBLISHABLE_KEY
-SUPABASE_ACCESS_TOKEN
-SUPABASE_PROJECT_ID
-SUPABASE_DB_PASSWORD
-SERPAPI_KEY
-ALLOWED_EMAIL
-OPENAI_API_KEY
-```
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_PROJECT_ID`
+- `SUPABASE_DB_PASSWORD`
+- `SERPAPI_KEY`
+- `ALLOWED_EMAIL`
+- `OPENAI_API_KEY`
 
-`OPENAI_API_KEY` must be an OpenAI API project key with billing/API access enabled. A ChatGPT subscription by itself is separate from API billing.
-
-Never put `OPENAI_API_KEY`, `SERPAPI_KEY`, database passwords, or Supabase secret/service keys into React/Vite source code.
+No new secret is required for Phase 3.
 
 ## Deploy
 
-The included `.github/workflows/deploy.yml` runs on pushes to `main` and manual workflow dispatch.
+Push the complete project to `main`. The existing GitHub Action will:
 
-It will:
-
-1. build the React/Vite frontend;
-2. link the Supabase project;
-3. run all migrations, including `002_phase2.sql`;
-4. sync `SERPAPI_KEY`, `ALLOWED_EMAIL`, and `OPENAI_API_KEY` to Supabase Edge Function secrets;
-5. deploy both `search-jobs` and `analyze-job` Edge Functions;
+1. install dependencies;
+2. build the React/Vite frontend;
+3. apply all Supabase migrations including `003_phase3.sql`;
+4. sync Edge Function secrets;
+5. deploy `search-jobs`, `analyze-job`, and `tailor-cv`;
 6. deploy GitHub Pages.
 
-## OpenAI model
+## Phase 3 usage
 
-Phase 2 uses `gpt-5.6-sol` through the Responses API with structured JSON output. The UI provides:
+1. Upload your master CV in **Job Discovery**.
+2. Find a promising job.
+3. Click **Analyze with GPT** and review APPLY / REVIEW / SKIP.
+4. Click **Tailor CV** on an analyzed role or open **CV Tailoring** in the sidebar.
+5. Choose a document format and emphasis.
+6. Click **Generate tailored CV**.
+7. Review the fact-lock audit, retained gaps, and warnings.
+8. Make any final manual bullet edits.
+9. Download the editable `.docx` and review it before submission.
 
-- **Standard** → medium reasoning
-- **Deep** → high reasoning
+## Important scoring language
 
-Analysis is manual/on-demand so API cost remains under the user's control.
+- Discovery score = deterministic search relevance.
+- CV match = transparent preliminary job–CV alignment.
+- GPT match = semantic fit from Phase 2.
+- Projected alignment = post-tailoring job–CV alignment estimate.
 
-## Important eligibility logic
-
-The analysis prompt is deliberately conservative:
-
-- CPT eligibility does not imply employer sponsorship.
-- If future sponsorship is needed and the posting explicitly prohibits present/future sponsorship, the role should be flagged incompatible.
-- If sponsorship language is missing, it remains UNKNOWN.
-- Graduation-year restrictions are compared with the candidate's expected graduation.
-- Thin LinkedIn snippets should produce REVIEW/UNKNOWN rather than fabricated certainty.
-- CV tailoring may only reframe facts supported by the uploaded CV.
-
-## Phase 2 files
-
-```text
-src/
-  App.tsx
-  types.ts
-  components/
-    AnalysisWorkspace.tsx
-    CandidateProfilePanel.tsx
-    GptAnalysisPanel.tsx
-    JobCard.tsx
-  lib/
-    candidate.ts
-    cv.ts
-supabase/
-  functions/
-    search-jobs/index.ts
-    analyze-job/index.ts
-  migrations/
-    001_phase1.sql
-    002_phase2.sql
-.github/workflows/deploy.yml
-```
-
-## First Phase 2 test
-
-After deployment:
-
-1. Upload your CV.
-2. Run a search.
-3. Open **GPT Analysis** and verify candidate settings.
-4. Return to Job Discovery.
-5. Choose one job with a known eligibility issue and one strong HEOR match.
-6. Click **Analyze with GPT** on each.
-7. Confirm the model distinguishes semantic fit from hard eligibility/sponsorship.
-
+None of these is represented as an employer's proprietary ATS score.

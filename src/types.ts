@@ -141,3 +141,69 @@ export interface AnalyzeJobRequest {
 export interface AnalyzeJobResponse {
   analysis: GptAnalysis
 }
+
+export type CvTailoringFormat = 'Industry CV · 2 pages' | 'Academic CV · full' | 'Concise resume · 1 page'
+export type CvTailoringEmphasis = 'Balanced' | 'HEOR / research' | 'Quantitative / technical'
+
+export interface CvTailoringSettings {
+  format: CvTailoringFormat
+  emphasis: CvTailoringEmphasis
+}
+
+export interface TailoredCvBullet {
+  id: string
+  text: string
+  sourceEvidence: string
+  rationale: string
+  keywords: string[]
+}
+
+export interface TailoredCvBlock {
+  id: string
+  heading: string
+  subheading: string
+  meta: string
+  sourceEvidence: string
+  bullets: TailoredCvBullet[]
+}
+
+export interface TailoredCvSection {
+  id: string
+  title: string
+  blocks: TailoredCvBlock[]
+}
+
+export interface TailoredCvDocument {
+  jobId: string
+  generatedAt: string
+  model: string
+  format: CvTailoringFormat
+  emphasis: CvTailoringEmphasis
+  projectedAlignment: number
+  sections: TailoredCvSection[]
+  targetedKeywords: string[]
+  retainedGaps: string[]
+  omittedContent: Array<{ item: string; reason: string }>
+  changeSummary: string[]
+  warnings: string[]
+  factLock: {
+    passed: boolean
+    verifiedClaims: number
+    rejectedClaims: string[]
+    notes: string[]
+  }
+  manuallyEdited?: boolean
+}
+
+export interface TailorCvRequest {
+  job: Job
+  cv: CvProfile
+  candidate: CandidateProfile
+  analysis: GptAnalysis
+  settings: CvTailoringSettings
+  depth: AnalysisDepth
+}
+
+export interface TailorCvResponse {
+  tailoredCv: TailoredCvDocument
+}

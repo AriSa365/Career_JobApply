@@ -14,6 +14,7 @@ export default function AnalysisWorkspace({
   analyzingIds,
   savedIds,
   onAnalyze,
+  onTailor,
   onToggleSave,
 }: {
   candidate: CandidateProfile
@@ -26,6 +27,7 @@ export default function AnalysisWorkspace({
   analyzingIds: string[]
   savedIds: string[]
   onAnalyze: (job: Job) => void
+  onTailor: (job: Job) => void
   onToggleSave: (jobId: string) => void
 }) {
   const analyzedJobs = jobs.filter((job) => analyses.has(job.id))
@@ -57,7 +59,7 @@ export default function AnalysisWorkspace({
       ) : (
         <section className="jobs-list">
           <div className="results-heading"><div><h2>{analyzedJobs.length} analyzed role{analyzedJobs.length === 1 ? '' : 's'}</h2><p>Saved locally in this browser and persisted server-side without your raw CV.</p></div></div>
-          {analyzedJobs.map((job) => <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} onToggleSave={() => onToggleSave(job.id)} gptAnalysis={analyses.get(job.id)} analyzing={analyzingIds.includes(job.id)} canAnalyze={Boolean(cv)} onAnalyze={() => onAnalyze(job)} />)}
+          {analyzedJobs.map((job) => <JobCard key={job.id} job={job} saved={savedIds.includes(job.id)} onToggleSave={() => onToggleSave(job.id)} gptAnalysis={analyses.get(job.id)} analyzing={analyzingIds.includes(job.id)} canAnalyze={Boolean(cv)} onAnalyze={() => onAnalyze(job)} onTailor={() => onTailor(job)} />)}
         </section>
       )}
     </>

@@ -363,3 +363,88 @@ button, input, select { font: inherit; }
   .analysis-footer { align-items: flex-start; flex-direction: column; }
   .model-control { align-self: flex-start; }
 }
+
+/* Phase 3 fact-locked CV tailoring */
+.tailor-btn { height: 34px; border: 1px solid #c8c9f6; background: #f4f3ff; color: #5547b8; border-radius: 8px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 750; }
+.tailor-control-card { background: #fff; border: 1px solid var(--line); border-radius: 15px; padding: 18px 20px; box-shadow: var(--shadow); margin-bottom: 15px; }
+.tailor-controls-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 11px; }
+.tailor-controls-grid label { display: grid; gap: 6px; }
+.tailor-controls-grid label > span { font-size: 9px; color: #65738a; font-weight: 750; }
+.tailor-controls-grid select { width: 100%; height: 39px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfe; color: var(--ink); padding: 0 10px; outline: 0; font-size: 10px; }
+.tailor-controls-grid select:focus { border-color: #8fb0fb; box-shadow: 0 0 0 3px #edf3ff; background: #fff; }
+.tailor-job-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 13px; border: 1px solid #e5eaf2; border-radius: 11px; background: #fbfcfe; }
+.tailor-job-summary > div:first-child strong, .tailor-job-summary > div:first-child span { display: block; }
+.tailor-job-summary > div:first-child strong { font-size: 11px; color: #2e3d54; }
+.tailor-job-summary > div:first-child span { font-size: 9px; color: #7d899b; margin-top: 2px; }
+.tailor-recommendation { font-size: 9px; font-weight: 850; padding: 6px 9px; border-radius: 999px; white-space: nowrap; }
+.tailor-recommendation.apply { background: #e7f7f1; color: #117455; }
+.tailor-recommendation.review { background: #fff6df; color: #966115; }
+.tailor-recommendation.skip { background: #fff0f0; color: #a43a3a; }
+.tailor-mini-facts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.tailor-mini-facts span { font-size: 8px; color: #8793a6; }
+.tailor-mini-facts b { color: #45536a; margin-left: 3px; }
+.tailor-skip-warning, .manual-edit-note { margin-top: 11px; border: 1px solid #f1d4b7; background: #fff8ee; color: #7f5d28; border-radius: 9px; padding: 9px 10px; display: flex; gap: 7px; align-items: flex-start; font-size: 9px; line-height: 1.5; }
+.tailor-generate-row { margin-top: 14px; padding-top: 13px; border-top: 1px solid #edf0f4; display: flex; align-items: center; gap: 12px; }
+.tailor-generate-row > span { color: #8793a6; font-size: 9px; }
+.phase3-empty { min-height: 280px; }
+.phase3-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.phase3-metrics > div { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; box-shadow: 0 6px 18px rgba(31,46,78,.04); }
+.phase3-metrics span, .phase3-metrics small { display: block; }
+.phase3-metrics span { font-size: 9px; color: var(--muted); }
+.phase3-metrics strong { display: block; font-family: Manrope, sans-serif; font-size: 20px; margin-top: 3px; color: #334158; }
+.phase3-metrics small { margin-top: 2px; font-size: 8px; color: #8a96a8; }
+.tailored-cv-layout { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(280px, .75fr); gap: 14px; align-items: start; }
+.tailored-cv-preview-card, .tailoring-audit-card { background: #fff; border: 1px solid var(--line); border-radius: 15px; box-shadow: var(--shadow); }
+.tailored-cv-preview-card { padding: 16px; }
+.tailored-preview-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 13px; }
+.tailored-preview-toolbar strong, .tailored-preview-toolbar span { display: block; }
+.tailored-preview-toolbar strong { font-size: 11px; color: #2f3e55; }
+.tailored-preview-toolbar span { font-size: 9px; color: #8692a5; margin-top: 2px; }
+.tailored-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.tailored-actions button { border: 1px solid var(--line); background: #fff; color: #56647a; height: 32px; border-radius: 8px; padding: 0 9px; display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 750; }
+.tailored-actions .download-docx-btn { background: var(--blue); border-color: var(--blue); color: #fff; }
+.cv-paper { background: #fff; border: 1px solid #dfe4ec; box-shadow: 0 8px 28px rgba(28,42,70,.08); padding: 34px 42px; min-height: 760px; color: #1f2937; }
+.cv-paper-header { text-align: center; padding-bottom: 12px; }
+.cv-paper-header strong, .cv-paper-header span { display: block; }
+.cv-paper-header strong { font-family: Arial, sans-serif; font-size: 18px; letter-spacing: .01em; }
+.cv-paper-header span { font-family: Arial, sans-serif; font-size: 10px; color: #505968; margin-top: 4px; }
+.cv-preview-section { margin-top: 12px; }
+.cv-preview-section h3 { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: .05em; border-bottom: 1px solid #9ea7b4; padding-bottom: 3px; margin: 0 0 7px; }
+.cv-preview-block { margin: 8px 0 10px; }
+.cv-preview-block > strong { display: block; font: 700 10.5px Arial, sans-serif; }
+.cv-preview-meta { font: italic 9.5px Arial, sans-serif; color: #48515e; margin-top: 1px; }
+.cv-preview-block ul { margin: 4px 0 0 18px; padding: 0; }
+.cv-preview-block li { margin: 2px 0; padding-left: 2px; }
+.cv-preview-block textarea { width: 100%; border: 1px solid transparent; background: transparent; resize: vertical; padding: 2px 4px; border-radius: 4px; font: 9.5px/1.35 Arial, sans-serif; color: #1f2937; overflow: hidden; }
+.cv-preview-block textarea:hover { border-color: #d9e1ed; background: #fbfcfe; }
+.cv-preview-block textarea:focus { outline: 0; border-color: #92b0f6; background: #fff; box-shadow: 0 0 0 2px #edf3ff; }
+.tailoring-audit-card { padding: 16px; position: sticky; top: 24px; }
+.audit-heading { display: flex; gap: 9px; align-items: flex-start; color: #285eb8; margin-bottom: 12px; }
+.audit-heading strong, .audit-heading span { display: block; }
+.audit-heading strong { color: #304057; font-size: 11px; }
+.audit-heading span { color: #8490a2; font-size: 8.5px; margin-top: 2px; line-height: 1.45; }
+.audit-list, .rejected-claims { padding-top: 10px; margin-top: 10px; border-top: 1px solid #edf0f4; display: grid; gap: 5px; }
+.audit-list b, .rejected-claims b, .tailor-warning-list b { font-size: 8px; text-transform: uppercase; letter-spacing: .06em; color: #748198; }
+.audit-list span, .rejected-claims span, .tailor-warning-list span, .audit-list em { font-size: 8.5px; line-height: 1.45; color: #526078; font-style: normal; }
+.audit-list.gaps span { color: #875f19; }
+.audit-list.muted span { color: #8793a6; }
+.rejected-claims { border: 1px solid #f0c7c7; background: #fff6f6; padding: 9px; border-radius: 8px; }
+.rejected-claims span { color: #9c3e3e; }
+.tailor-warning-list { margin-top: 11px; padding: 9px; border: 1px solid #f1dfb7; background: #fff8e8; border-radius: 8px; display: grid; gap: 5px; }
+
+@media (max-width: 1180px) {
+  .tailor-controls-grid { grid-template-columns: 1fr 1fr; }
+  .tailor-job-select { grid-column: span 2; }
+  .tailored-cv-layout { grid-template-columns: 1fr; }
+  .tailoring-audit-card { position: static; }
+}
+@media (max-width: 760px) {
+  .tailor-controls-grid { grid-template-columns: 1fr; }
+  .tailor-job-select { grid-column: span 1; }
+  .tailor-job-summary { grid-template-columns: 1fr; }
+  .tailor-mini-facts { justify-content: flex-start; }
+  .phase3-metrics { grid-template-columns: repeat(2, 1fr); }
+  .tailored-preview-toolbar { align-items: flex-start; flex-direction: column; }
+  .tailored-actions { justify-content: flex-start; }
+  .cv-paper { padding: 24px 18px; }
+}
