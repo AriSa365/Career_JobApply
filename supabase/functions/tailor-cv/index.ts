@@ -188,6 +188,7 @@ function buildPrompt(job: Job, cvText: string, candidate: CandidateProfile, anal
 NON-NEGOTIABLE FACT LOCK
 - NEVER invent a skill, software package, method, therapeutic area, employer, title, project, publication, date, degree, metric, patient count, dollar amount, percentage, award, responsibility, or outcome.
 - Every factual block and every bullet MUST include sourceEvidence that is an EXACT CONTIGUOUS excerpt copied from the MASTER CV text below. The server will reject claims whose evidence cannot be found.
+- Use the SHORTEST exact evidence excerpt that is sufficient to verify the claim. Avoid copying whole paragraphs or entire sections into sourceEvidence.
 - Rephrase and reorder supported facts to match the job's terminology when semantically faithful. Do not claim direct experience when the CV only supports adjacent/transferable experience.
 - If the job requires something not supported by the CV, keep it in retainedGaps. NEVER add it to the CV.
 - Do not include a fake objective such as "seeking" unless the source CV supports it. A concise professional/research summary is allowed only when every factual sentence is supported by evidence-linked bullets.
@@ -251,14 +252,21 @@ Return only the required structured JSON.`
 }
 
 function outputText(response: any) {
+  const chunks: string[] = []
   for (const item of response?.output || []) {
     if (item?.type !== 'message') continue
-    for (const content of item?.content || []) if (content?.type === 'output_text' && typeof content.text === 'string') return content.text
+    for (const content of item?.content || []) {
+      if (content?.type === 'output_text' && typeof content.text === 'string') chunks.push(content.text)
+    }
   }
-  return ''
+  return chunks.join('')
 }
 
-async function callOpenAI(apiKey: string, prompt: string, depth: AnalysisDepth) {
+function incompleteReason(payload: any) {
+  return String(payload?.incomplete_details?.reason || payload?.status || 'unknown')
+}
+
+async function requestStructuredDraft(apiKey: string, prompt: string, depth: AnalysisDepth, maxOutputTokens: number) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -266,7 +274,7 @@ async function callOpenAI(apiKey: string, prompt: string, depth: AnalysisDepth) 
       model: 'gpt-5.6-sol',
       reasoning: { effort: depth === 'Deep' ? 'high' : 'medium' },
       input: prompt,
-      max_output_tokens: 10000,
+      max_output_tokens: maxOutputTokens,
       store: false,
       text: { format: { type: 'json_schema', name: 'fact_locked_tailored_cv', strict: true, schema: draftSchema } },
     }),
@@ -274,6 +282,43 @@ async function callOpenAI(apiKey: string, prompt: string, depth: AnalysisDepth) 
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.error?.message || `OpenAI API returned HTTP ${response.status}`)
   return payload
+}
+
+async function callOpenAI(apiKey: string, prompt: string, depth: AnalysisDepth) {
+  const attempts = [
+    { maxOutputTokens: 18000, compact: false },
+    { maxOutputTokens: 26000, compact: true },
+  ]
+  let lastProblem = 'GPT did not return a complete structured CV draft.'
+
+  for (const attempt of attempts) {
+    const retryRules = attempt.compact ? `
+
+IMPORTANT RETRY COMPACTNESS RULES
+The previous generation was incomplete or malformed. Return a more selective draft while preserving the requested format. Use no more than 6 sections, no more than 10 total blocks, and no more than 4 bullets per block. Keep each sourceEvidence excerpt to the shortest exact contiguous excerpt that fully supports the claim. Keep rationales concise. Do not repeat the same evidence unless necessary.` : ''
+    const payload = await requestStructuredDraft(apiKey, `${prompt}${retryRules}`, depth, attempt.maxOutputTokens)
+
+    if (payload?.status === 'incomplete') {
+      lastProblem = `GPT response was incomplete (${incompleteReason(payload)}).`
+      continue
+    }
+
+    const raw = outputText(payload)
+    if (!raw) {
+      lastProblem = 'GPT returned no structured CV draft.'
+      continue
+    }
+
+    try {
+      return JSON.parse(raw)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid JSON'
+      lastProblem = `GPT returned malformed structured output (${message}).`
+      continue
+    }
+  }
+
+  throw new Error(`${lastProblem} Please retry once. If it repeats, choose Industry CV · 2 pages or Concise resume · 1 page to reduce output size.`)
 }
 
 function canonical(text: string) {
@@ -370,10 +415,7 @@ Deno.serve(async (req) => {
 
     const publicPage = await fetchPublicJobPage(job.applyUrl)
     const prompt = buildPrompt(job, cvText, candidate, analysis, settings, publicPage)
-    const response = await callOpenAI(openaiKey, prompt, depth)
-    const raw = outputText(response)
-    if (!raw) throw new Error('GPT returned no structured CV draft.')
-    const parsed = JSON.parse(raw)
+    const parsed = await callOpenAI(openaiKey, prompt, depth)
     const locked = applyFactLock(parsed, cvText)
 
     const tailoredCv = {
