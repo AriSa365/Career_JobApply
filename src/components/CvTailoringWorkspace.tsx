@@ -73,7 +73,7 @@ export default function CvTailoringWorkspace({
     <>
       <header className="topbar analysis-topbar">
         <div>
-          <p className="eyebrow">GPT-5.6 SOL · PHASE 3</p>
+          <p className="eyebrow">GPT-5.6 LUNA · DEFAULT · PHASE 3</p>
           <h1>Fact-locked CV tailoring studio</h1>
           <p>Generate a separate job-specific CV, preserve your master CV, and audit every rewritten claim against source evidence.</p>
         </div>

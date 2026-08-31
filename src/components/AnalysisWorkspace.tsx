@@ -36,11 +36,11 @@ export default function AnalysisWorkspace({
     <>
       <header className="topbar analysis-topbar">
         <div>
-          <p className="eyebrow">GPT-5.6 SOL · PHASE 2</p>
+          <p className="eyebrow">GPT-5.6 LUNA · DEFAULT · PHASE 2</p>
           <h1>Job intelligence & eligibility analysis</h1>
           <p>Read the fuller posting, reason about graduation timing and sponsorship, then compare it semantically with your CV.</p>
         </div>
-        <div className="model-control"><BrainCircuit size={18} /><label><span>Reasoning depth</span><select value={depth} onChange={(e) => onDepthChange(e.target.value as AnalysisDepth)}><option>Standard</option><option>Deep</option></select></label></div>
+        <div className="model-control"><BrainCircuit size={18} /><label><span>Reasoning depth</span><select value={depth} onChange={(e) => onDepthChange(e.target.value as AnalysisDepth)}><option value="Standard">Standard · GPT-5.6 Luna</option><option value="Deep">Deep Review · GPT-5.6 Sol</option></select></label></div>
       </header>
 
       <CandidateProfilePanel value={candidate} onChange={onCandidateChange} />

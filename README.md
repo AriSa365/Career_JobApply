@@ -5,7 +5,7 @@ A private HEOR/RWE career application workspace deployed with GitHub Pages + Sup
 ## Phase 4 pipeline
 
 1. **Job Discovery** — configurable Google Jobs + public LinkedIn discovery with recency filtering.
-2. **GPT Analysis** — GPT-5.6 Sol evaluates eligibility, sponsorship/CPT risk, HEOR relevance, and semantic CV fit.
+2. **GPT Analysis** — GPT-5.6 Luna evaluates eligibility, sponsorship/CPT risk, HEOR relevance, and semantic CV fit by default. GPT-5.6 Sol is reserved for optional Deep Review.
 3. **CV Tailoring** — fact-locked job-specific CV generation with editable DOCX download.
 4. **Applications** — application tracker + fact-locked cover letter and application-answer package.
 
@@ -63,3 +63,13 @@ The raw uploaded master CV is **not** stored in either Phase 4 table.
 The master CV remains the factual authority for candidate claims. Each generated cover-letter paragraph and each generated application answer must include exact source evidence from the uploaded CV. The backend rejects generated items whose evidence cannot be found.
 
 Work-authorization guidance is generated separately from the candidate profile because employer questions differ. Always read the exact employer wording before selecting a Yes/No response.
+
+
+## AI model routing
+
+The app is cost-optimized by default:
+
+- **Standard (default):** `gpt-5.6-luna`
+- **Deep Review (optional):** `gpt-5.6-sol`
+
+The selected model is applied consistently to job analysis, CV tailoring, and application-package generation. The app starts in Standard mode after a fresh load.

@@ -1,5 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const DEFAULT_AI_MODEL = 'gpt-5.6-luna'
+const DEEP_REVIEW_MODEL = 'gpt-5.6-sol'
+
+function modelForDepth(depth: AnalysisDepth) {
+  return depth === 'Deep' ? DEEP_REVIEW_MODEL : DEFAULT_AI_MODEL
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -214,7 +221,7 @@ function collectWebSources(response: any) {
 
 async function callOpenAI(apiKey: string, prompt: string, depth: AnalysisDepth, useWeb: boolean) {
   const body: any = {
-    model: 'gpt-5.6-sol',
+    model: modelForDepth(depth),
     reasoning: { effort: depth === 'Deep' ? 'high' : 'medium' },
     input: prompt,
     max_output_tokens: 7000,
@@ -303,7 +310,7 @@ Deno.serve(async (req) => {
       sourceUrls,
       jobId: job.id,
       analyzedAt: new Date().toISOString(),
-      model: 'gpt-5.6-sol',
+      model: modelForDepth(depth),
       reasoningDepth: depth,
       usage: {
         inputTokens: response?.usage?.input_tokens,

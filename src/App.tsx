@@ -175,7 +175,7 @@ export default function App() {
   const [profile, setProfile] = useState<SearchProfile>(storedProfile)
   const [cv, setCv] = useState<CvProfile | null>(storedCv)
   const [candidate, setCandidate] = useState<CandidateProfile>(loadCandidateProfile)
-  const [depth, setDepth] = useState<AnalysisDepth>('Deep')
+  const [depth, setDepth] = useState<AnalysisDepth>('Standard')
   const [analyses, setAnalyses] = useState<Map<string, GptAnalysis>>(storedAnalyses)
   const [tailoredCvs, setTailoredCvs] = useState<Map<string, TailoredCvDocument>>(storedTailoredCvs)
   const [tailorSettings, setTailorSettings] = useState<CvTailoringSettings>(storedTailorSettings)
@@ -536,7 +536,7 @@ export default function App() {
               <div>
                 <p className="eyebrow">JOB DISCOVERY + CV MATCH</p>
                 <h1>Flexible HEOR opportunity radar</h1>
-                <p>Search with your own research keywords, scan Google Jobs and public LinkedIn postings, then send promising roles to GPT-5.6 Sol.</p>
+                <p>Search with your own research keywords, scan Google Jobs and public LinkedIn postings, then send promising roles to GPT-5.6 Luna by default, with Sol available only for Deep Review.</p>
               </div>
               <button className="primary-btn search-now" onClick={runSearch} disabled={running || !canSearch}>
                 <RefreshCw size={17} className={running ? 'spin' : ''} /> {running ? 'Searching…' : 'Run search now'}

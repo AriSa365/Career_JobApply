@@ -139,7 +139,7 @@ export default function ApplicationsWorkspace({
     <>
       <header className="topbar analysis-topbar">
         <div>
-          <p className="eyebrow">GPT-5.6 SOL · PHASE 4</p>
+          <p className="eyebrow">GPT-5.6 LUNA · DEFAULT · PHASE 4</p>
           <h1>Application manager & submission pack</h1>
           <p>Prepare the final application materials, track every status change, and keep the final employer submission under your control.</p>
         </div>
