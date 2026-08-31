@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import { FunctionsHttpError, type Session } from '@supabase/supabase-js'
 import {
   BriefcaseBusiness,
   CalendarClock,
@@ -31,7 +31,7 @@ const DEFAULT_PROFILE: SearchProfile = {
 }
 
 const EMPTY_META: SearchMeta = {
-  searchedAt: '', cutoffDays: 30, queriesRun: 0, rawCount: 0, strictCount: 0,
+  searchedAt: '', cutoffDays: 30, queriesRun: 0, queriesSucceeded: 0, zeroResultQueries: 0, queryWarnings: [], rawCount: 0, strictCount: 0,
   excludedOld: 0, excludedUnknownDate: 0, excludedClosed: 0, excludedIrrelevant: 0,
 }
 
@@ -102,7 +102,16 @@ export default function App() {
       setJobs(data.jobs)
       setMeta(data.meta)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The search failed. Check Edge Function logs and secrets.')
+      if (err instanceof FunctionsHttpError) {
+        try {
+          const payload = await err.context.json()
+          setError(payload?.error || err.message)
+        } catch {
+          setError(err.message)
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'The search failed. Check Edge Function logs and secrets.')
+      }
     } finally {
       setRunning(false)
     }
@@ -190,8 +199,11 @@ export default function App() {
         {jobs.length === 0 ? (
           <section className="empty-state">
             <div className="empty-icon"><Search size={25} /></div>
-            <h2>Ready for the first search</h2>
-            <p>Click <strong>Run search now</strong>. The backend will query multiple HEOR/RWE job-search phrases, deduplicate results, reject postings older than 30 days, reject unknown dates, require Summer 2027 + graduate-level signals, and require a live application route.</p>
+            <h2>{meta.searchedAt ? 'No eligible jobs found in this search' : 'Ready for the first search'}</h2>
+            <p>{meta.searchedAt
+              ? `The provider returned ${meta.rawCount} raw posting${meta.rawCount === 1 ? '' : 's'}, but none passed every Phase 1 gate. ${meta.zeroResultQueries} of ${meta.queriesRun} provider queries returned no jobs.`
+              : <>Click <strong>Run search now</strong>. The backend will query multiple HEOR/RWE job-search phrases, deduplicate results, reject postings older than 30 days, reject unknown dates, require Summer 2027 + graduate-level signals, and require a live application route.</>}
+            </p>
           </section>
         ) : visibleJobs.length === 0 ? (
           <section className="empty-state compact"><h2>No jobs match these dashboard filters.</h2><p>Your underlying search results are unchanged.</p></section>
@@ -207,10 +219,11 @@ export default function App() {
           </section>
         )}
 
-        {meta.rawCount > 0 && (
+        {meta.searchedAt && (
           <section className="audit-card">
             <strong>Search audit</strong>
-            <span>{meta.queriesRun} provider queries</span>
+            <span>{meta.queriesSucceeded}/{meta.queriesRun} provider queries completed</span>
+            <span>{meta.zeroResultQueries} queries returned no jobs</span>
             <span>{meta.excludedOld} older than 30 days</span>
             <span>{meta.excludedUnknownDate} unknown posting date</span>
             <span>{meta.excludedClosed} without active apply route</span>

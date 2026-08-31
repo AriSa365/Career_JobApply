@@ -30,6 +30,9 @@ export interface SearchMeta {
   searchedAt: string
   cutoffDays: number
   queriesRun: number
+  queriesSucceeded: number
+  zeroResultQueries: number
+  queryWarnings: string[]
   rawCount: number
   strictCount: number
   excludedOld: number

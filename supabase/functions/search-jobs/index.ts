@@ -11,10 +11,10 @@ type RawJob = Record<string, any>
 type Category = 'HEOR' | 'RWE / Epidemiology' | 'Market Access' | 'Patient-Centered' | 'Other'
 
 const QUERY_GROUPS = [
-  '2027 summer PhD internship HEOR health economics outcomes research',
-  '2027 summer PhD internship real world evidence RWE epidemiology pharmacoepidemiology',
-  '2027 summer PhD internship market access value access health economics',
-  '2027 summer PhD internship patient centered outcomes patient reported outcomes patient preference',
+  '2027 health economics outcomes research internship',
+  '2027 real world evidence epidemiology internship',
+  '2027 market access value evidence internship',
+  '2027 patient outcomes research internship',
 ]
 
 const KEYWORD_GROUPS: Record<Exclude<Category, 'Other'>, string[]> = {
@@ -174,7 +174,13 @@ async function searchSerpApi(query: string, apiKey: string) {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Job provider returned HTTP ${response.status}`)
   const payload = await response.json()
-  if (payload.error) throw new Error(payload.error)
+  if (payload.error) {
+    const message = String(payload.error)
+    // SerpApi may report an empty Google Jobs page through the `error` field.
+    // An empty batch is a valid search outcome and must not fail the whole run.
+    if (/hasn['’]?t returned any results|no results|did not return any results/i.test(message)) return []
+    throw new Error(message)
+  }
   return Array.isArray(payload.jobs_results) ? payload.jobs_results : []
 }
 
@@ -208,15 +214,39 @@ Deno.serve(async (req) => {
     const requestedCutoff = Number(requestBody?.profile?.cutoffDays || 30)
     const cutoffDays = Math.min(30, Math.max(1, requestedCutoff)) // hard server-side maximum
 
-    const rawBatches = await Promise.all(QUERY_GROUPS.map(async (query) => ({
-      query,
-      jobs: await searchSerpApi(query, serpApiKey),
-    })))
+    const settledBatches = await Promise.allSettled(
+      QUERY_GROUPS.map(async (query) => ({ query, jobs: await searchSerpApi(query, serpApiKey) })),
+    )
+
+    const rawBatches: { query: string; jobs: RawJob[] }[] = []
+    const queryWarnings: string[] = []
+    let zeroResultQueries = 0
+
+    settledBatches.forEach((result, index) => {
+      const query = QUERY_GROUPS[index]
+      if (result.status === 'fulfilled') {
+        rawBatches.push(result.value)
+        if (result.value.jobs.length === 0) zeroResultQueries += 1
+      } else {
+        const message = result.reason instanceof Error ? result.reason.message : String(result.reason)
+        queryWarnings.push(`${query}: ${message}`)
+        console.warn('Job provider query failed:', query, message)
+      }
+    })
+
+    // If every provider call truly failed (auth, quota, provider outage, etc.), surface the failure.
+    // Empty result sets are not failures and therefore still count as fulfilled batches above.
+    if (rawBatches.length === 0 && queryWarnings.length > 0) {
+      throw new Error(`All job-provider queries failed. ${queryWarnings.join(' | ')}`)
+    }
 
     const meta = {
       searchedAt: new Date().toISOString(),
       cutoffDays,
       queriesRun: QUERY_GROUPS.length,
+      queriesSucceeded: rawBatches.length,
+      zeroResultQueries,
+      queryWarnings,
       rawCount: rawBatches.reduce((sum, batch) => sum + batch.jobs.length, 0),
       strictCount: 0,
       excludedOld: 0,
