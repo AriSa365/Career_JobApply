@@ -33,12 +33,30 @@ type CandidateProfile = {
   notes: string
 }
 
-function envKey(...names: string[]) {
+function rawEnvKey(...names: string[]) {
   for (const name of names) {
     const value = Deno.env.get(name)
     if (value) return value
   }
   return undefined
+}
+
+function namedEnvKey(jsonName: string, ...fallbackNames: string[]): string | undefined {
+  const packed = Deno.env.get(jsonName)
+  if (packed) {
+    try {
+      const parsed = JSON.parse(packed)
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.default === 'string' && parsed.default) return parsed.default
+        const first = Object.values(parsed).find((value) => typeof value === 'string' && value)
+        if (typeof first === 'string') return first
+      }
+    } catch {
+      // Some local/legacy environments may expose a raw key here.
+      if (/^(?:eyJ|sb_)/.test(packed)) return packed
+    }
+  }
+  return rawEnvKey(...fallbackNames)
 }
 
 function cleanInput(value: unknown, max = 50000) {
@@ -235,8 +253,8 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const publishableKey = envKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
-    const secretKey = envKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+    const publishableKey = namedEnvKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY', 'SUPABASE_PUBLISHABLE_KEY')
+    const secretKey = namedEnvKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY')
     const openaiKey = Deno.env.get('OPENAI_API_KEY')
     const allowedEmail = Deno.env.get('ALLOWED_EMAIL')?.toLowerCase()
     const authorization = req.headers.get('Authorization')
@@ -244,8 +262,9 @@ Deno.serve(async (req) => {
     if (!supabaseUrl || !publishableKey || !authorization) return Response.json({ error: 'Supabase authentication is not configured.' }, { status: 500, headers: corsHeaders })
     if (!openaiKey) return Response.json({ error: 'OPENAI_API_KEY is missing from Edge Function secrets.' }, { status: 500, headers: corsHeaders })
 
-    const userClient = createClient(supabaseUrl, publishableKey, { global: { headers: { Authorization: authorization } } })
-    const { data: { user }, error: userError } = await userClient.auth.getUser()
+    const token = authorization.replace(/^Bearer\s+/i, '').trim()
+    const userClient = createClient(supabaseUrl, publishableKey)
+    const { data: { user }, error: userError } = await userClient.auth.getUser(token)
     if (userError || !user) return Response.json({ error: 'Unauthorized.' }, { status: 401, headers: corsHeaders })
     if (allowedEmail && user.email?.toLowerCase() !== allowedEmail) return Response.json({ error: 'This account is not authorized to run GPT analysis.' }, { status: 403, headers: corsHeaders })
 
