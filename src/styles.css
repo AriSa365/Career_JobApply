@@ -579,3 +579,25 @@ button, input, select { font: inherit; }
   .cover-letter-paper { padding: 20px 16px; }
   .package-section-heading { align-items: flex-start; flex-direction: column; }
 }
+
+/* Phase 4.2 — eligibility guardrails + employer resolution */
+.application-guardrail { margin-top: 11px; border-radius: 10px; padding: 10px 11px; font-size: 9px; line-height: 1.45; display: flex; gap: 9px; align-items: flex-start; justify-content: space-between; }
+.application-guardrail > div:first-child { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.application-guardrail span { display: flex; flex-direction: column; gap: 2px; }
+.application-guardrail strong { font-size: 9.5px; }
+.application-guardrail small { font-size: 8.5px; color: inherit; opacity: .9; }
+.application-guardrail.blocked { border: 1px solid #efb7b7; background: #fff1f1; color: #9c2f2f; flex-direction: column; }
+.application-guardrail.overridden { border: 1px solid #edc989; background: #fff8e8; color: #7e5716; }
+.application-guardrail.review { border: 1px solid #edd8a6; background: #fffaef; color: #7b5d21; justify-content: flex-start; }
+.application-guardrail.company { border: 1px solid #cbd8ef; background: #f5f8ff; color: #385a8a; justify-content: flex-start; }
+.override-controls { display: grid; grid-template-columns: minmax(260px, 1fr) auto; gap: 8px; width: 100%; }
+.override-controls input { border: 1px solid #dfb8b8; border-radius: 8px; padding: 9px 10px; font: inherit; color: var(--ink); background: #fff; }
+.override-controls button, .application-guardrail.overridden > button { border: 1px solid currentColor; background: #fff; color: inherit; border-radius: 8px; padding: 8px 10px; font-size: 8.5px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.override-controls button:disabled { opacity: .45; cursor: not-allowed; }
+.application-submit-actions button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.application-form-grid label:first-child + label input { min-width: 0; }
+
+@media (max-width: 760px) {
+  .override-controls { grid-template-columns: 1fr; }
+  .application-guardrail.overridden { flex-direction: column; }
+}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   BriefcaseBusiness,
@@ -78,6 +78,7 @@ export default function ApplicationsWorkspace({
   const [charLimitDraft, setCharLimitDraft] = useState('')
   const [customQuestions, setCustomQuestions] = useState<Array<{ question: string; maxChars: number | null }>>([])
   const [copied, setCopied] = useState('')
+  const [overrideReasonDraft, setOverrideReasonDraft] = useState('')
 
   const applicationList = useMemo(() => Array.from(applications.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [applications])
   const selected = applications.get(selectedApplicationId) || applicationList[0]
@@ -85,6 +86,15 @@ export default function ApplicationsWorkspace({
   const analysis = selected ? analyses.get(selected.jobId) : undefined
   const tailoredCv = selected ? tailoredCvs.get(selected.jobId) : undefined
   const generating = selected ? generatingIds.includes(selected.jobId) : false
+  const hardBlocked = Boolean(analysis && (analysis.recommendation === 'SKIP' || analysis.eligibility === 'FAIL'))
+  const reviewGuard = Boolean(analysis && !hardBlocked && (analysis.recommendation === 'REVIEW' || analysis.eligibility === 'REVIEW'))
+  const overrideActive = Boolean(selected?.eligibilityOverride)
+  const submissionBlocked = hardBlocked && !overrideActive
+  const companyUnresolved = Boolean(selected && (!selected.job.company.trim() || /company not parsed|unknown company|^unknown$/i.test(selected.job.company.trim())))
+
+  useEffect(() => {
+    setOverrideReasonDraft(selected?.eligibilityOverrideReason || '')
+  }, [selected?.id, selected?.eligibilityOverrideReason])
 
   const readyUntracked = jobs.filter((job) => tailoredCvs.has(job.id) && !Array.from(applications.values()).some((app) => app.jobId === job.id))
   const appliedCount = applicationList.filter((x) => ['Applied', 'Interview', 'Offer'].includes(x.status)).length
@@ -97,7 +107,7 @@ export default function ApplicationsWorkspace({
   }
 
   function markSubmitted() {
-    if (!selected) return
+    if (!selected || submissionBlocked) return
     onUpdateApplication({
       ...selected,
       status: 'Applied',
@@ -105,6 +115,35 @@ export default function ApplicationsWorkspace({
       followUpAt: selected.followUpAt || addDaysIso(7),
       updatedAt: new Date().toISOString(),
     })
+  }
+
+  function setStatus(status: ApplicationStatus) {
+    if (submissionBlocked && ['Applied', 'Interview', 'Offer'].includes(status)) return
+    update({ status })
+  }
+
+  function activateOverride() {
+    if (!selected || !hardBlocked || overrideReasonDraft.trim().length < 10) return
+    onUpdateApplication({
+      ...selected,
+      eligibilityOverride: true,
+      eligibilityOverrideReason: overrideReasonDraft.trim(),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  function revokeOverride() {
+    if (!selected) return
+    onUpdateApplication({
+      ...selected,
+      eligibilityOverride: false,
+      eligibilityOverrideReason: '',
+      status: ['Applied', 'Interview', 'Offer'].includes(selected.status) ? 'Ready to apply' : selected.status,
+      appliedAt: ['Applied', 'Interview', 'Offer'].includes(selected.status) ? '' : selected.appliedAt,
+      followUpAt: ['Applied', 'Interview', 'Offer'].includes(selected.status) ? '' : selected.followUpAt,
+      updatedAt: new Date().toISOString(),
+    })
+    setOverrideReasonDraft('')
   }
 
   function addQuestion() {
@@ -139,7 +178,7 @@ export default function ApplicationsWorkspace({
     <>
       <header className="topbar analysis-topbar">
         <div>
-          <p className="eyebrow">GPT-5.6 LUNA · DEFAULT · PHASE 4</p>
+          <p className="eyebrow">GPT-5.6 LUNA · DEFAULT · PHASE 4.2</p>
           <h1>Application manager & submission pack</h1>
           <p>Prepare the final application materials, track every status change, and keep the final employer submission under your control.</p>
         </div>
@@ -186,7 +225,8 @@ export default function ApplicationsWorkspace({
                 </div>
 
                 <div className="application-form-grid">
-                  <label><span>Status</span><select value={selected.status} onChange={(e) => update({ status: e.target.value as ApplicationStatus })}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+                  <label><span>Status</span><select value={selected.status} onChange={(e) => setStatus(e.target.value as ApplicationStatus)}>{STATUSES.map((status) => <option key={status} disabled={submissionBlocked && ['Applied', 'Interview', 'Offer'].includes(status)}>{status}</option>)}</select></label>
+                  <label><span>Company / employer <em>· {selected.companyResolution}</em></span><input value={selected.job.company} onChange={(e) => update({ job: { ...selected.job, company: e.target.value }, companyResolution: e.target.value.trim() ? 'MANUAL' : 'UNRESOLVED' })} placeholder="Enter employer if discovery could not parse it" /></label>
                   <label><span>Application deadline</span><input type="date" value={selected.deadline} onChange={(e) => update({ deadline: e.target.value })} /></label>
                   <label><span>Applied date</span><input type="date" value={selected.appliedAt} onChange={(e) => update({ appliedAt: e.target.value })} /></label>
                   <label><span>Follow-up date</span><input type="date" value={selected.followUpAt} onChange={(e) => update({ followUpAt: e.target.value })} /></label>
@@ -200,10 +240,24 @@ export default function ApplicationsWorkspace({
                 </div>
 
                 <div className="application-submit-actions">
-                  <button className="primary-btn" onClick={() => onGeneratePackage(selected, customQuestions)} disabled={generating || !analysis || !tailoredCv || !cv}>{generating ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />} {generating ? 'Preparing application…' : pkg ? 'Regenerate application pack' : 'Generate application pack'}</button>
-                  <button className="mark-submitted-btn" onClick={markSubmitted}><Send size={15} /> I submitted this application</button>
+                  <button className="primary-btn" onClick={() => onGeneratePackage(selected, customQuestions)} disabled={generating || !analysis || !tailoredCv || !cv || submissionBlocked}>{generating ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />} {generating ? 'Preparing application…' : pkg ? 'Regenerate application pack' : 'Generate application pack'}</button>
+                  <button className="mark-submitted-btn" onClick={markSubmitted} disabled={submissionBlocked}><Send size={15} /> I submitted this application</button>
                 </div>
-                {analysis?.recommendation === 'SKIP' && <div className="tailor-skip-warning"><AlertTriangle size={15} /> Phase 2 classified this role SKIP. You can track it, but review eligibility before submitting.</div>}
+
+                {hardBlocked && !overrideActive && (
+                  <div className="application-guardrail blocked">
+                    <div><AlertTriangle size={16} /><span><strong>Submission blocked by eligibility guardrail</strong><small>Phase 2 returned {analysis?.recommendation} / eligibility {analysis?.eligibility}. Application-pack generation and submitted/interview/offer statuses are disabled by default.</small></span></div>
+                    <div className="override-controls"><input value={overrideReasonDraft} onChange={(e) => setOverrideReasonDraft(e.target.value)} placeholder="Why are you applying despite this eligibility warning? (10+ characters)" /><button onClick={activateOverride} disabled={overrideReasonDraft.trim().length < 10}>Override guardrail</button></div>
+                  </div>
+                )}
+                {hardBlocked && overrideActive && (
+                  <div className="application-guardrail overridden">
+                    <div><AlertTriangle size={16} /><span><strong>Manual eligibility override active</strong><small>{selected.eligibilityOverrideReason}. Phase 2 still classifies this role {analysis?.recommendation} / {analysis?.eligibility}; review the posting before submission.</small></span></div>
+                    <button onClick={revokeOverride}>Revoke override</button>
+                  </div>
+                )}
+                {reviewGuard && <div className="application-guardrail review"><AlertTriangle size={15} /><span><strong>Review before applying</strong><small>Phase 2 found unresolved eligibility or fit questions. The workflow remains available, but verify the flagged details before submission.</small></span></div>}
+                {companyUnresolved && <div className="application-guardrail company"><AlertTriangle size={15} /><span><strong>Employer name unresolved</strong><small>Phase 4.2 will attempt a secondary recovery from the public application page when generating the package. If recovery fails, enter the employer above before continuing.</small></span></div>}
               </section>
 
               <section className="custom-question-card">

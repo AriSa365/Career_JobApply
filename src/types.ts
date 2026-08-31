@@ -219,6 +219,9 @@ export interface ApplicationRecord {
   appliedAt: string
   followUpAt: string
   notes: string
+  eligibilityOverride: boolean
+  eligibilityOverrideReason: string
+  companyResolution: 'ORIGINAL' | 'RECOVERED' | 'MANUAL' | 'UNRESOLVED'
   createdAt: string
   updatedAt: string
 }
@@ -275,4 +278,10 @@ export interface PrepareApplicationRequest {
 
 export interface PrepareApplicationResponse {
   applicationPackage: ApplicationPackage
+  resolvedJob?: Job
+  companyResolution?: {
+    status: 'ORIGINAL' | 'RECOVERED' | 'MANUAL' | 'UNRESOLVED'
+    company: string
+    source: string
+  }
 }

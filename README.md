@@ -1,8 +1,8 @@
-# HEOR Career Agent — Phase 4
+# HEOR Career Agent — Phase 4.2
 
 A private HEOR/RWE career application workspace deployed with GitHub Pages + Supabase.
 
-## Phase 4 pipeline
+## Phase 4.2 pipeline
 
 1. **Job Discovery** — configurable Google Jobs + public LinkedIn discovery with recency filtering.
 2. **GPT Analysis** — GPT-5.6 Luna evaluates eligibility, sponsorship/CPT risk, HEOR relevance, and semantic CV fit by default. GPT-5.6 Sol is reserved for optional Deep Review.
@@ -11,7 +11,7 @@ A private HEOR/RWE career application workspace deployed with GitHub Pages + Sup
 
 The app intentionally keeps the final employer/LinkedIn **Submit** click with the user.
 
-## Phase 4 features
+## Phase 4.2 features
 
 - Track each application separately.
 - Store status, deadline, applied date, follow-up date, and notes.
@@ -22,6 +22,16 @@ The app intentionally keeps the final employer/LinkedIn **Submit** click with th
 - Copy individual answers or the full application package.
 - Review work-authorization and future-sponsorship guidance before answering employer questions.
 - Persist application records and generated packages in Supabase under Row Level Security.
+
+
+### Phase 4.2 quality guardrails
+
+- `SKIP` or `Eligibility FAIL` roles are blocked from package generation and submission-state changes by default.
+- Continuing a blocked role requires an explicit manual override with a written reason.
+- `REVIEW` roles remain usable but display a prominent verification warning.
+- Employer names that could not be parsed during discovery are recovered from the public application page when possible.
+- If recovery fails, the user must enter the employer name manually before an application package can be generated. GPT is never asked to guess the company.
+- Guardrail overrides and company-resolution status persist in Supabase.
 
 ## Required GitHub Actions secrets
 
@@ -42,7 +52,7 @@ Push the complete project to `main`. The existing GitHub Action will:
 
 1. install dependencies;
 2. build the Vite/React frontend;
-3. run Supabase migrations, including `004_phase4.sql`;
+3. run Supabase migrations, including `004_phase4.sql` and `005_phase4_2.sql`;
 4. deploy all Edge Functions, including `prepare-application`;
 5. deploy GitHub Pages.
 

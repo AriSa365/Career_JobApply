@@ -340,6 +340,152 @@ function authorizationGuidance(candidate: CandidateProfile) {
   }
 }
 
+
+function companyIsUsable(company: string, jobTitle = '') {
+  const value = cleanInput(company, 180)
+  if (!value || /^(?:company not parsed|unknown company|unknown|n\/a|linkedin)$/i.test(value)) return false
+  if (jobTitle && canonical(value) === canonical(jobTitle)) return false
+  return value.length >= 2 && value.length <= 160
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x2F;/gi, '/')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/\s+/g, ' ').trim()
+}
+
+function parseCompanyFromPageTitle(rawTitle: string, job: Job) {
+  const cleaned = decodeHtml(rawTitle).replace(/\s*[|\-–—]\s*LinkedIn\s*$/i, '').trim()
+  const hiring = cleaned.match(/^(.+?)\s+hiring\s+(.+?)(?:\s+in\s+.+)?$/i)
+  if (hiring && companyIsUsable(hiring[1], job.title)) return hiring[1].trim()
+  const at = cleaned.match(/^(.+?)\s+at\s+(.+?)(?:\s*[|–—]\s*.+)?$/i)
+  if (at && companyIsUsable(at[2], job.title)) return at[2].trim()
+
+  const jobNeedle = canonical(job.title).replace(/\.{3}$/g, '').trim()
+  const segments = cleaned.split(/\s+[|–—]\s+/).map((x) => x.trim()).filter(Boolean)
+  for (const segment of segments) {
+    const c = canonical(segment)
+    if (!c || c === jobNeedle || jobNeedle.includes(c) || c.includes(jobNeedle)) continue
+    if (/^(?:united states|remote|hybrid|on-site|onsite)$/i.test(segment)) continue
+    if (companyIsUsable(segment, job.title)) return segment
+  }
+  return ''
+}
+
+function companyFromJsonLd(html: string) {
+  const scripts = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
+  for (const match of scripts) {
+    try {
+      const parsed = JSON.parse(decodeHtml(match[1]).replace(/^\s*<!--|-->\s*$/g, ''))
+      const queue = Array.isArray(parsed) ? [...parsed] : [parsed]
+      while (queue.length) {
+        const node: any = queue.shift()
+        if (!node || typeof node !== 'object') continue
+        const type = Array.isArray(node['@type']) ? node['@type'].join(' ') : String(node['@type'] || '')
+        if (/JobPosting/i.test(type)) {
+          const name = node?.hiringOrganization?.name
+          if (typeof name === 'string' && companyIsUsable(name)) return cleanInput(name, 160)
+        }
+        if (Array.isArray(node['@graph'])) queue.push(...node['@graph'])
+      }
+    } catch {
+      // Ignore malformed structured-data blocks and continue to deterministic fallbacks.
+    }
+  }
+  return ''
+}
+
+function safePublicUrl(raw: string) {
+  try {
+    const url = new URL(raw)
+    if (!['https:', 'http:'].includes(url.protocol)) return null
+    const host = url.hostname.toLowerCase()
+    if (host === 'localhost' || host.endsWith('.local') || host === '0.0.0.0' || host === '::1') return null
+    if (/^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(host)) return null
+    return url
+  } catch { return null }
+}
+
+async function fetchPublicHtml(start: URL) {
+  let current = start
+  for (let hop = 0; hop < 4; hop += 1) {
+    const response = await fetch(current, {
+      redirect: 'manual',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; HEORCareerAgent/1.0; +https://github.com/)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location')
+      if (!location) return { response, html: '' }
+      const next = safePublicUrl(new URL(location, current).toString())
+      if (!next) throw new Error('Application page redirected to a non-public URL.')
+      current = next
+      continue
+    }
+    const html = response.ok ? (await response.text()).slice(0, 900000) : ''
+    return { response, html }
+  }
+  throw new Error('Application page exceeded the redirect limit.')
+}
+
+async function resolveCompany(job: Job, currentResolution: string) {
+  if (companyIsUsable(job.company, job.title)) {
+    const status = currentResolution === 'MANUAL' ? 'MANUAL' : 'ORIGINAL'
+    return { job, status, company: job.company, source: status === 'MANUAL' ? 'manual application edit' : 'job discovery data' }
+  }
+
+  const url = safePublicUrl(job.applyUrl)
+  if (!url) return { job, status: 'UNRESOLVED', company: job.company, source: 'invalid or private application URL' }
+
+  try {
+    const { response, html } = await fetchPublicHtml(url)
+    if (!response.ok) return { job, status: 'UNRESOLVED', company: job.company, source: `application page HTTP ${response.status}` }
+
+    const structured = companyFromJsonLd(html)
+    if (companyIsUsable(structured, job.title)) {
+      const resolvedJob = { ...job, company: structured }
+      return { job: resolvedJob, status: 'RECOVERED', company: structured, source: 'JobPosting structured data' }
+    }
+
+    const directPatterns = [
+      /"companyName"\s*:\s*"([^"]{2,160})"/i,
+      /"hiringOrganization"\s*:\s*\{[^{}]{0,600}"name"\s*:\s*"([^"]{2,160})"/i,
+      /(?:company|employer)[_-]?name["']?\s*[:=]\s*["']([^"']{2,160})["']/i,
+    ]
+    for (const pattern of directPatterns) {
+      const match = html.match(pattern)
+      const value = match ? decodeHtml(match[1]) : ''
+      if (companyIsUsable(value, job.title)) {
+        const resolvedJob = { ...job, company: value }
+        return { job: resolvedJob, status: 'RECOVERED', company: value, source: 'application-page company metadata' }
+      }
+    }
+
+    const titleCandidates = [
+      html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] || '',
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1] || '',
+      html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '',
+    ]
+    for (const candidate of titleCandidates) {
+      const company = parseCompanyFromPageTitle(candidate, job)
+      if (companyIsUsable(company, job.title)) {
+        const resolvedJob = { ...job, company }
+        return { job: resolvedJob, status: 'RECOVERED', company, source: 'application-page title metadata' }
+      }
+    }
+  } catch (error) {
+    console.warn('Company recovery failed:', error instanceof Error ? error.message : String(error))
+  }
+
+  return { job, status: 'UNRESOLVED', company: job.company, source: 'public application page did not expose a reliable employer name' }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: corsHeaders })
@@ -376,7 +522,24 @@ Deno.serve(async (req) => {
     if (!analysis?.recommendation || typeof analysis.cvMatch !== 'number') return Response.json({ error: 'Phase 2 GPT analysis is required.' }, { status: 400, headers: corsHeaders })
     if (!tailoredCv?.sections?.length) return Response.json({ error: 'Generate a tailored CV before preparing the application package.' }, { status: 400, headers: corsHeaders })
 
-    const draft = await callOpenAI(openaiKey, buildPrompt(job, cvText, candidate, analysis, tailoredCv, customQuestions), depth)
+    const hardBlocked = analysis.recommendation === 'SKIP' || analysis.eligibility === 'FAIL'
+    if (hardBlocked && !application?.eligibilityOverride) {
+      return Response.json({ error: 'Phase 2 marked this role SKIP or eligibility FAIL. An explicit application guardrail override is required before generating application materials.' }, { status: 409, headers: corsHeaders })
+    }
+    if (hardBlocked && cleanInput(application?.eligibilityOverrideReason, 1000).length < 10) {
+      return Response.json({ error: 'The eligibility guardrail override requires a short reason (at least 10 characters).' }, { status: 409, headers: corsHeaders })
+    }
+
+    const companyResolution = await resolveCompany(job, cleanInput(application?.companyResolution, 40))
+    if (companyResolution.status === 'UNRESOLVED' || !companyIsUsable(companyResolution.company, job.title)) {
+      return Response.json({
+        error: 'The employer name could not be reliably recovered from this posting. Enter the company/employer name in the Applications workspace, then generate the package again.',
+        companyResolution: { status: 'UNRESOLVED', company: job.company, source: companyResolution.source },
+      }, { status: 422, headers: corsHeaders })
+    }
+    const resolvedJob = companyResolution.job as Job
+
+    const draft = await callOpenAI(openaiKey, buildPrompt(resolvedJob, cvText, candidate, analysis, tailoredCv, customQuestions), depth)
     const locked = applyFactLock(draft, cvText)
     if (locked.coverLetter.paragraphs.length < 2 || locked.answers.length < 3) throw new Error('Fact lock rejected too much generated application content. Regenerate after checking that the master CV contains the relevant experience.')
 
@@ -404,7 +567,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ applicationPackage }, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return Response.json({
+      applicationPackage,
+      resolvedJob,
+      companyResolution: { status: companyResolution.status, company: companyResolution.company, source: companyResolution.source },
+    }, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     console.error(error)
     return Response.json({ error: error instanceof Error ? error.message : 'Unexpected application preparation error' }, { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

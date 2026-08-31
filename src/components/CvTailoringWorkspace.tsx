@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Check, Clipboard, Download, FileCheck2, FilePenLine, Loader2, Send, ShieldCheck, Sparkles } from 'lucide-react'
 import { downloadTailoredCvDocx, downloadTailoringAudit, tailoredCvToPlainText } from '../lib/docx'
 import type { CvProfile, CvTailoringEmphasis, CvTailoringFormat, CvTailoringSettings, GptAnalysis, Job, TailoredCvDocument } from '../types'
@@ -40,11 +40,20 @@ export default function CvTailoringWorkspace({
   onTrackJob: (job: Job) => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [skipOverride, setSkipOverride] = useState(false)
+  const [skipOverrideReason, setSkipOverrideReason] = useState('')
   const analyzedJobs = useMemo(() => jobs.filter((job) => analyses.has(job.id)), [jobs, analyses])
   const selectedJob = analyzedJobs.find((job) => job.id === selectedJobId) || analyzedJobs[0]
   const analysis = selectedJob ? analyses.get(selectedJob.id) : undefined
   const document = selectedJob ? tailoredCvs.get(selectedJob.id) : undefined
   const generating = selectedJob ? generatingIds.includes(selectedJob.id) : false
+  const hardBlocked = Boolean(analysis && (analysis.recommendation === 'SKIP' || analysis.eligibility === 'FAIL'))
+  const tailoringBlocked = hardBlocked && !skipOverride
+
+  useEffect(() => {
+    setSkipOverride(false)
+    setSkipOverrideReason('')
+  }, [selectedJob?.id])
 
   function editBullet(sectionId: string, blockId: string, bulletId: string, text: string) {
     if (!selectedJob || !document) return
@@ -104,10 +113,17 @@ export default function CvTailoringWorkspace({
         )}
 
         {!cv && <div className="inline-warning phase2-warning"><AlertTriangle size={15} /> Upload your master CV in Job Discovery before generating a tailored version.</div>}
-        {selectedJob && analysis?.recommendation === 'SKIP' && <div className="tailor-skip-warning"><AlertTriangle size={15} /> This role was classified SKIP. Tailoring is still available for review, but a better-fitting eligible role is usually a better use of API cost.</div>}
+        {selectedJob && hardBlocked && !skipOverride && (
+          <div className="application-guardrail blocked tailor-guardrail">
+            <div><AlertTriangle size={15} /><span><strong>CV tailoring blocked by eligibility guardrail</strong><small>Phase 2 returned {analysis?.recommendation} / eligibility {analysis?.eligibility}. This prevents spending API credits on a role that is currently classified ineligible.</small></span></div>
+            <div className="override-controls"><input value={skipOverrideReason} onChange={(e) => setSkipOverrideReason(e.target.value)} placeholder="Why do you still want to tailor this role? (10+ characters)" /><button onClick={() => skipOverrideReason.trim().length >= 10 && setSkipOverride(true)} disabled={skipOverrideReason.trim().length < 10}>Tailor anyway</button></div>
+          </div>
+        )}
+        {selectedJob && hardBlocked && skipOverride && <div className="application-guardrail overridden tailor-guardrail"><AlertTriangle size={15} /><span><strong>Manual CV-tailoring override active</strong><small>{skipOverrideReason}. The role remains {analysis?.recommendation} / {analysis?.eligibility}.</small></span><button onClick={() => setSkipOverride(false)}>Revoke override</button></div>}
+        {selectedJob && !hardBlocked && (analysis?.recommendation === 'REVIEW' || analysis?.eligibility === 'REVIEW') && <div className="application-guardrail review tailor-guardrail"><AlertTriangle size={15} /><span><strong>Review before tailoring</strong><small>Phase 2 found unresolved eligibility or fit details. Tailoring remains available.</small></span></div>}
 
         <div className="tailor-generate-row">
-          <button className="primary-btn" disabled={!selectedJob || !analysis || !cv || generating} onClick={() => selectedJob && onGenerate(selectedJob)}>{generating ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} {generating ? 'Building fact-locked CV…' : document ? 'Regenerate tailored CV' : 'Generate tailored CV'}</button>
+          <button className="primary-btn" disabled={!selectedJob || !analysis || !cv || generating || tailoringBlocked} onClick={() => selectedJob && onGenerate(selectedJob)}>{generating ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} {generating ? 'Building fact-locked CV…' : document ? 'Regenerate tailored CV' : 'Generate tailored CV'}</button>
           <span>The master CV remains unchanged. Generated versions are stored separately.</span>
         </div>
       </section>

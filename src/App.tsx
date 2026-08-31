@@ -136,7 +136,12 @@ function storedTailorSettings(): CvTailoringSettings {
 function storedApplications(): Map<string, ApplicationRecord> {
   try {
     const parsed = JSON.parse(localStorage.getItem('heor-applications') || '{}') as Record<string, ApplicationRecord>
-    return new Map(Object.entries(parsed))
+    return new Map(Object.entries(parsed).map(([id, application]) => [id, {
+      ...application,
+      eligibilityOverride: Boolean(application.eligibilityOverride),
+      eligibilityOverrideReason: application.eligibilityOverrideReason || '',
+      companyResolution: application.companyResolution || (application.job?.company && !/company not parsed|unknown company/i.test(application.job.company) ? 'ORIGINAL' : 'UNRESOLVED'),
+    }]))
   } catch { return new Map() }
 }
 
@@ -240,7 +245,10 @@ export default function App() {
         loaded.set(String(row.id), {
           id: String(row.id), jobId: String(row.job_id), job,
           status: row.status as ApplicationRecord['status'], deadline: row.deadline || '', appliedAt: row.applied_at || '',
-          followUpAt: row.follow_up_at || '', notes: row.notes || '', createdAt: row.created_at, updatedAt: row.updated_at,
+          followUpAt: row.follow_up_at || '', notes: row.notes || '',
+          eligibilityOverride: Boolean(row.eligibility_override), eligibilityOverrideReason: row.eligibility_override_reason || '',
+          companyResolution: (row.company_resolution || (job.company && !/company not parsed|unknown company/i.test(job.company) ? 'ORIGINAL' : 'UNRESOLVED')) as ApplicationRecord['companyResolution'],
+          createdAt: row.created_at, updatedAt: row.updated_at,
         })
       }
       if (loaded.size) setApplications((current) => new Map([...current, ...loaded]))
@@ -408,6 +416,9 @@ export default function App() {
       applied_at: application.appliedAt || null,
       follow_up_at: application.followUpAt || null,
       notes: application.notes,
+      eligibility_override: application.eligibilityOverride,
+      eligibility_override_reason: application.eligibilityOverrideReason,
+      company_resolution: application.companyResolution,
       created_at: application.createdAt,
       updated_at: application.updatedAt,
     }, { onConflict: 'id' })
@@ -423,7 +434,10 @@ export default function App() {
     }
     const now = new Date().toISOString()
     const application: ApplicationRecord = {
-      id: crypto.randomUUID(), jobId: job.id, job, status: 'Ready to apply', deadline: '', appliedAt: '', followUpAt: '', notes: '', createdAt: now, updatedAt: now,
+      id: crypto.randomUUID(), jobId: job.id, job, status: 'Ready to apply', deadline: '', appliedAt: '', followUpAt: '', notes: '',
+      eligibilityOverride: false, eligibilityOverrideReason: '',
+      companyResolution: job.company && !/company not parsed|unknown company/i.test(job.company) ? 'ORIGINAL' : 'UNRESOLVED',
+      createdAt: now, updatedAt: now,
     }
     setApplications((current) => new Map(current).set(application.id, application))
     setSelectedApplicationId(application.id)
@@ -450,6 +464,12 @@ export default function App() {
     const analysis = analyses.get(application.jobId)
     const tailoredCv = tailoredCvs.get(application.jobId)
     if (!analysis) { setApplicationError('Run Phase 2 GPT analysis for this role first.'); return }
+    if ((analysis.recommendation === 'SKIP' || analysis.eligibility === 'FAIL') && !application.eligibilityOverride) {
+      setApplicationError('Phase 2 marked this role SKIP or eligibility FAIL. Use the explicit eligibility override in Applications before generating a package.'); return
+    }
+    if (application.eligibilityOverride && application.eligibilityOverrideReason.trim().length < 10) {
+      setApplicationError('The eligibility override needs a short reason before application materials can be generated.'); return
+    }
     if (!tailoredCv) { setApplicationError('Generate a Phase 3 tailored CV for this role first.'); return }
     setPreparingApplicationIds((ids) => Array.from(new Set([...ids, application.jobId])))
     setApplicationError('')
@@ -460,6 +480,16 @@ export default function App() {
       if (invokeError) throw invokeError
       if (!data?.applicationPackage) throw new Error('Application preparation returned no package.')
       setApplicationPackages((current) => new Map(current).set(application.jobId, data.applicationPackage))
+      if (data.resolvedJob || data.companyResolution) {
+        const updatedApplication: ApplicationRecord = {
+          ...application,
+          job: data.resolvedJob || application.job,
+          companyResolution: data.companyResolution?.status || application.companyResolution,
+          updatedAt: new Date().toISOString(),
+        }
+        setApplications((current) => new Map(current).set(application.id, updatedApplication))
+        void persistApplication(updatedApplication)
+      }
       setSelectedApplicationId(application.id)
       setView('applications')
     } catch (err) {
@@ -489,7 +519,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark small"><BriefcaseBusiness size={21} /></div>
-          <div><strong>HEOR Career Agent</strong><span>Phase 4</span></div>
+          <div><strong>HEOR Career Agent</strong><span>Phase 4.2</span></div>
         </div>
 
         <div className="profile-card">
