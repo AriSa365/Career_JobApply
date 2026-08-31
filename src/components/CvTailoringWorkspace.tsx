@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Clipboard, Download, FileCheck2, FilePenLine, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, Clipboard, Download, FileCheck2, FilePenLine, Loader2, Send, ShieldCheck, Sparkles } from 'lucide-react'
 import { downloadTailoredCvDocx, downloadTailoringAudit, tailoredCvToPlainText } from '../lib/docx'
 import type { CvProfile, CvTailoringEmphasis, CvTailoringFormat, CvTailoringSettings, GptAnalysis, Job, TailoredCvDocument } from '../types'
 
@@ -22,6 +22,8 @@ export default function CvTailoringWorkspace({
   generatingIds,
   onGenerate,
   onDocumentChange,
+  trackedJobIds,
+  onTrackJob,
 }: {
   cv: CvProfile | null
   jobs: Job[]
@@ -34,6 +36,8 @@ export default function CvTailoringWorkspace({
   generatingIds: string[]
   onGenerate: (job: Job) => void
   onDocumentChange: (jobId: string, document: TailoredCvDocument) => void
+  trackedJobIds: string[]
+  onTrackJob: (job: Job) => void
 }) {
   const [copied, setCopied] = useState(false)
   const analyzedJobs = useMemo(() => jobs.filter((job) => analyses.has(job.id)), [jobs, analyses])
@@ -121,7 +125,7 @@ export default function CvTailoringWorkspace({
 
           <section className="tailored-cv-layout">
             <div className="tailored-cv-preview-card">
-              <div className="tailored-preview-toolbar"><div><strong>Editable tailored CV</strong><span>Click into a bullet to make final edits.</span></div><div className="tailored-actions"><button onClick={copyDocument}><Clipboard size={14} /> {copied ? 'Copied' : 'Copy text'}</button><button onClick={() => selectedJob && downloadTailoringAudit(document, selectedJob)}><FileCheck2 size={14} /> Audit JSON</button><button className="download-docx-btn" onClick={() => selectedJob && cv && downloadTailoredCvDocx(document, cv, selectedJob)}><Download size={14} /> Download DOCX</button></div></div>
+              <div className="tailored-preview-toolbar"><div><strong>Editable tailored CV</strong><span>Click into a bullet to make final edits.</span></div><div className="tailored-actions"><button onClick={copyDocument}><Clipboard size={14} /> {copied ? 'Copied' : 'Copy text'}</button><button onClick={() => selectedJob && downloadTailoringAudit(document, selectedJob)}><FileCheck2 size={14} /> Audit JSON</button><button className="download-docx-btn" onClick={() => selectedJob && cv && downloadTailoredCvDocx(document, cv, selectedJob)}><Download size={14} /> Download DOCX</button>{selectedJob && <button className="application-track-btn" onClick={() => onTrackJob(selectedJob)}>{trackedJobIds.includes(selectedJob.id) ? <Check size={14} /> : <Send size={14} />} {trackedJobIds.includes(selectedJob.id) ? 'Tracked' : 'Add to Applications'}</button>}</div></div>
 
               <div className="cv-paper">
                 {cv && <div className="cv-paper-header"><strong>{cv.text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || 'Candidate'}</strong><span>{cv.text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[1] || ''}</span></div>}

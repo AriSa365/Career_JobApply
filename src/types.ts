@@ -207,3 +207,72 @@ export interface TailorCvRequest {
 export interface TailorCvResponse {
   tailoredCv: TailoredCvDocument
 }
+
+export type ApplicationStatus = 'Ready to apply' | 'Applied' | 'Interview' | 'Offer' | 'Rejected' | 'Withdrawn'
+
+export interface ApplicationRecord {
+  id: string
+  jobId: string
+  job: Job
+  status: ApplicationStatus
+  deadline: string
+  appliedAt: string
+  followUpAt: string
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ApplicationAnswer {
+  id: string
+  question: string
+  answer: string
+  maxChars: number | null
+  sourceEvidence: string[]
+  warning: string
+}
+
+export interface CoverLetterParagraph {
+  id: string
+  text: string
+  sourceEvidence: string[]
+}
+
+export interface ApplicationPackage {
+  jobId: string
+  generatedAt: string
+  model: string
+  coverLetter: {
+    greeting: string
+    paragraphs: CoverLetterParagraph[]
+    closing: string
+  }
+  answers: ApplicationAnswer[]
+  authorizationGuidance: {
+    currentAuthorization: string
+    futureSponsorship: string
+    relocation: string
+    cautions: string[]
+  }
+  submissionChecklist: string[]
+  factLock: {
+    passed: boolean
+    verifiedEvidence: number
+    rejectedItems: string[]
+    notes: string[]
+  }
+}
+
+export interface PrepareApplicationRequest {
+  application: ApplicationRecord
+  cv: CvProfile
+  candidate: CandidateProfile
+  analysis: GptAnalysis
+  tailoredCv: TailoredCvDocument
+  customQuestions: Array<{ question: string; maxChars: number | null }>
+  depth: AnalysisDepth
+}
+
+export interface PrepareApplicationResponse {
+  applicationPackage: ApplicationPackage
+}

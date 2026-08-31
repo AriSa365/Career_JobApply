@@ -1,53 +1,31 @@
-# HEOR Career Agent — Phase 3
+# HEOR Career Agent — Phase 4
 
-Phase 3 extends the HEOR Career Agent from job discovery and GPT eligibility analysis into **fact-locked, job-specific CV tailoring**.
+A private HEOR/RWE career application workspace deployed with GitHub Pages + Supabase.
 
-## Current pipeline
+## Phase 4 pipeline
 
-1. **Job Discovery**
-   - Google Jobs + public LinkedIn job pages
-   - configurable opportunity type, year, season, degree, work arrangement, country, location, recency, research areas, and custom keywords
-   - hard maximum 30-day posting-age gate
-2. **CV Match**
-   - local DOCX/PDF/TXT parsing
-   - preliminary transparent job–CV alignment score
-3. **GPT Analysis**
-   - GPT-5.6 Sol semantic fit analysis
-   - graduation/degree eligibility
-   - CPT and sponsorship reasoning
-   - APPLY / REVIEW / SKIP
-4. **CV Tailoring (Phase 3)**
-   - job-specific CV draft
-   - evidence-linked rewrites
-   - server-side fact-lock validation
-   - editable preview
-   - editable DOCX export
-   - audit JSON export
+1. **Job Discovery** — configurable Google Jobs + public LinkedIn discovery with recency filtering.
+2. **GPT Analysis** — GPT-5.6 Sol evaluates eligibility, sponsorship/CPT risk, HEOR relevance, and semantic CV fit.
+3. **CV Tailoring** — fact-locked job-specific CV generation with editable DOCX download.
+4. **Applications** — application tracker + fact-locked cover letter and application-answer package.
 
-## Phase 3 integrity model
+The app intentionally keeps the final employer/LinkedIn **Submit** click with the user.
 
-The master CV remains the factual source. The `tailor-cv` Edge Function tells GPT that every generated block and bullet must include an **exact contiguous evidence excerpt** copied from the uploaded master CV. The server then checks those excerpts against the master CV before returning the draft.
+## Phase 4 features
 
-If an evidence excerpt cannot be found:
-- the unsupported block/claim is removed;
-- it is listed under rejected claims;
-- projected alignment is penalized;
-- the job requirement stays a gap rather than becoming fake experience.
-
-This reduces hallucinated CV content but does not replace final human review. Manual browser edits after generation are explicitly marked as needing re-review.
-
-## Privacy
-
-- Raw CV files are parsed in the browser.
-- Raw CV text is sent to the protected `analyze-job` and `tailor-cv` Edge Functions only when the user explicitly requests GPT work.
-- The `job_analyses` table does not store the raw master CV.
-- The `cv_versions` table stores generated tailored document JSON/version metadata, not the raw master CV.
-- SerpApi does not receive the CV.
-- `OPENAI_API_KEY`, `SERPAPI_KEY`, and other server secrets never go to GitHub Pages frontend code.
+- Track each application separately.
+- Store status, deadline, applied date, follow-up date, and notes.
+- Mark an application as submitted after you complete the employer form.
+- Generate a job-specific application package only after Phase 2 analysis + Phase 3 CV tailoring.
+- Add employer-specific questions and character limits before generating answers.
+- Download an editable cover letter DOCX.
+- Copy individual answers or the full application package.
+- Review work-authorization and future-sponsorship guidance before answering employer questions.
+- Persist application records and generated packages in Supabase under Row Level Security.
 
 ## Required GitHub Actions secrets
 
-Phase 3 uses the same secrets as Phase 2:
+No new secret is required for Phase 4. Keep the existing secrets:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
@@ -58,36 +36,30 @@ Phase 3 uses the same secrets as Phase 2:
 - `ALLOWED_EMAIL`
 - `OPENAI_API_KEY`
 
-No new secret is required for Phase 3.
-
 ## Deploy
 
 Push the complete project to `main`. The existing GitHub Action will:
 
 1. install dependencies;
-2. build the React/Vite frontend;
-3. apply all Supabase migrations including `003_phase3.sql`;
-4. sync Edge Function secrets;
-5. deploy `search-jobs`, `analyze-job`, and `tailor-cv`;
-6. deploy GitHub Pages.
+2. build the Vite/React frontend;
+3. run Supabase migrations, including `004_phase4.sql`;
+4. deploy all Edge Functions, including `prepare-application`;
+5. deploy GitHub Pages.
 
-## Phase 3 usage
+No manual Supabase SQL step is needed when the workflow is configured correctly.
 
-1. Upload your master CV in **Job Discovery**.
-2. Find a promising job.
-3. Click **Analyze with GPT** and review APPLY / REVIEW / SKIP.
-4. Click **Tailor CV** on an analyzed role or open **CV Tailoring** in the sidebar.
-5. Choose a document format and emphasis.
-6. Click **Generate tailored CV**.
-7. Review the fact-lock audit, retained gaps, and warnings.
-8. Make any final manual bullet edits.
-9. Download the editable `.docx` and review it before submission.
+## Phase 4 database objects
 
-## Important scoring language
+### `applications`
+Stores the authenticated user's job snapshot and application status metadata.
 
-- Discovery score = deterministic search relevance.
-- CV match = transparent preliminary job–CV alignment.
-- GPT match = semantic fit from Phase 2.
-- Projected alignment = post-tailoring job–CV alignment estimate.
+### `application_packages`
+Stores generated structured application packages. The protected Edge Function performs writes; users can read only their own packages.
 
-None of these is represented as an employer's proprietary ATS score.
+The raw uploaded master CV is **not** stored in either Phase 4 table.
+
+## Application Pack fact lock
+
+The master CV remains the factual authority for candidate claims. Each generated cover-letter paragraph and each generated application answer must include exact source evidence from the uploaded CV. The backend rejects generated items whose evidence cannot be found.
+
+Work-authorization guidance is generated separately from the candidate profile because employer questions differ. Always read the exact employer wording before selecting a Yes/No response.
